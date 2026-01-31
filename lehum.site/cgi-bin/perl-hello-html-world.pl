@@ -6,11 +6,11 @@ print "Content-Type: text/html\n\n";
 print "<!DOCTYPE html>";
 print "<html>";
 print "<head>";
-print "<title>Hello CGI World</title>";
+print "<title>Hello Lehum.Site World</title>";
 print "</head>";
 print "<body>";
 
-print "<h1 align=center>Hello HTML World</h1><hr/>";
+print "<h1 align=center>Hello Lehum.Site World</h1><hr/>";
 print "<p>Hello World</p>";
 print "<p>This page was generated with the Perl programming langauge</p>";
 
