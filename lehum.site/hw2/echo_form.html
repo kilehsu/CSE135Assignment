@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Echo Form - CSE 135</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        label { display: inline-block; width: 100px; }
+        .form-group { margin-bottom: 1rem; }
+        #result { margin-top: 2rem; border: 1px solid #ccc; padding: 1rem; background: #f9f9f9; display: none; }
+        pre { white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Echo Form</h1>
+    <p>Test the Echo endpoints for different languages, methods, and encodings.</p>
+
+    <form id="echoForm" action="/hw2/php/echo-php.php" method="GET">
+        <div class="form-group">
+            <label for="language">Language:</label>
+            <select id="language" name="language">
+                <option value="php">PHP</option>
+                <option value="python">Python</option>
+                <option value="ruby">Ruby</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="method">Method:</label>
+            <select id="method" name="method">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="DELETE">DELETE</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="encoding">Encoding:</label>
+            <select id="encoding" name="encoding">
+                <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
+                <option value="application/json">application/json</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="data_field">Data:</label>
+            <input type="text" id="data_field" name="data_field" value="Hello World">
+        </div>
+
+        <button type="submit">Submit</button>
+    </form>
+
+    <div id="result">
+        <h3>Response:</h3>
+        <pre id="responseContent"></pre>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('echoForm');
+            const resultDiv = document.getElementById('result');
+            const responseContent = document.getElementById('responseContent');
+            const languageSelect = document.getElementById('language');
+            const methodSelect = document.getElementById('method');
+            const encodingSelect = document.getElementById('encoding');
+
+            // Map languages to endpoints
+            const endpoints = {
+                'php': '/hw2/php/echo-php.php',
+                'python': '/cgi-bin/echo-python.py',
+                'ruby': '/cgi-bin/echo-ruby.rb'
+            };
+
+            // Update form action when language changes (for no-JS fallback)
+            languageSelect.addEventListener('change', () => {
+                form.action = endpoints[languageSelect.value];
+            });
+
+            // Update form method when method changes (limited to GET/POST for no-JS)
+            methodSelect.addEventListener('change', () => {
+                const method = methodSelect.value;
+                if (method === 'GET' || method === 'POST') {
+                    form.method = method;
+                }
+            });
+            
+            // Handle form submission
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const language = languageSelect.value;
+                const method = methodSelect.value;
+                const encoding = encodingSelect.value;
+                const url = endpoints[language];
+                
+                const formData = new FormData(form);
+                const data = {};
+                formData.forEach((value, key) => data[key] = value);
+                
+                let options = {
+                    method: method,
+                    headers: {
+                        'Accept': 'application/json, text/html, */*'
+                    }
+                };
+
+                if (method !== 'GET') {
+                    if (encoding === 'application/json') {
+                        options.headers['Content-Type'] = 'application/json';
+                        options.body = JSON.stringify(data);
+                    } else {
+                        options.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+                        const params = new URLSearchParams();
+                        for (const key in data) {
+                            params.append(key, data[key]);
+                        }
+                        options.body = params;
+                    }
+                } else {
+                    // For GET, append params to URL
+                    const params = new URLSearchParams();
+                     for (const key in data) {
+                        params.append(key, data[key]);
+                    }
+                    // If the URL already has params, we might need logic, but here endpoints are clean
+                    // Actually, for GET request we should reconstruct the URL with query params
+                    const fetchUrl = new URL(url, window.location.origin);
+                    for(const key in data) {
+                        fetchUrl.searchParams.append(key, data[key]);
+                    }
+                     // We'll use the constructed URL for the fetch
+                     // Note: 'url' variable is just path string, we need to fetch from constructed one
+                     // But fetch(url) takes string too.
+                }
+
+                try {
+                    // For GET requests, we need to append query params to the URL, not send body
+                    let fetchUrl = url;
+                    if (method === 'GET') {
+                        const params = new URLSearchParams();
+                        for (const key in data) {
+                            params.append(key, data[key]);
+                        }
+                        fetchUrl += '?' + params.toString();
+                        delete options.body; // GET cannot have body
+                        delete options.headers['Content-Type'];
+                    }
+
+                    const response = await fetch(fetchUrl, options);
+                    const responseText = await response.text();
+                    
+                    resultDiv.style.display = 'block';
+                    responseContent.textContent = responseText;
+                    
+                    // Attempt to parse if it's JSON for pretty printing
+                    try {
+                        const json = JSON.parse(responseText);
+                        responseContent.textContent = JSON.stringify(json, null, 2);
+                    } catch (e) {
+                        // Not JSON, leave as text
+                    }
+                    
+                } catch (error) {
+                    resultDiv.style.display = 'block';
+                    responseContent.textContent = 'Error: ' + error.message;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
