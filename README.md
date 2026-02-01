@@ -39,9 +39,9 @@ For each language, we implemented:
 For our third option, we chose **GoatCounter**.
 
 **Why we picked it**: 
-We wanted to explore a **privacy-first** alternative to Google Analytics. GoatCounter is open-source, lightweight, and GDPR compliant without needing complex cookie consent banners. It tracks usage statistics without tracking individual users' personal data.
+We wanted to explore a **privacy-first** alternative to Google Analytics. GoatCounter is open-source, lightweight, and we also saw that it was GDPR compliant. It tracks usage statistics without tracking individual users' personal data.
 
 **Evaluation and Analysis**:
 -   **Pros**: Extremely simple setup (just a script tag), very clean and readable dashboard, no heavy impact on page load performance.
--   **Cons**: Less detailed demographic data compared to GA (which is by design).
--   **Conclusion**: It is an excellent choice for projects where user privacy is a priority and "vanity metrics" are sufficient. We found it much easier to integrate and understand than the more complex platforms.
+-   **Cons**: Less detailed demographic data compared to Google Analytics (which is by design).
+-   **Conclusion**: It is a great choice if you care about user privacy and just want basic traffic numbers. It was also much easier to set up than the other tools.
