@@ -3,6 +3,7 @@
 ## Links
 - **Team Website**: [https://www.lehum.site](https://www.lehum.site)
 - **Homework 2 Links**: All CGI programs and the Echo Form are linked under the "Homework 2" section on the homepage.
+- **Echo Form**: [Echo Form Application](https://www.lehum.site/hw2/echo_form.html)
 
 ## Team Members
 - Aaron Chiuwei
