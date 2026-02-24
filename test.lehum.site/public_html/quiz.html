@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quick Quiz – Lehum Lab</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1>Lehum Lab</h1>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="feedback.html">Feedback</a>
+      <a href="contact.html">Contact</a>
+      <a href="quiz.html">Quick Quiz</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1 class="page-title">Quick Quiz</h1>
+    <p>Click an answer to see if you’re right. Good for generating click and keyboard activity.</p>
+
+    <div class="card" id="quiz1">
+      <h3>1. What does REST stand for?</h3>
+      <div class="quiz-option" data-correct="true">Representational State Transfer</div>
+      <div class="quiz-option" data-correct="false">Remote Execution Server Technology</div>
+      <div class="quiz-option" data-correct="false">Resource Endpoint Style Transfer</div>
+    </div>
+
+    <div class="card" id="quiz2">
+      <h3>2. Which HTTP method is typically used to create a new resource?</h3>
+      <div class="quiz-option" data-correct="false">GET</div>
+      <div class="quiz-option" data-correct="true">POST</div>
+      <div class="quiz-option" data-correct="false">DELETE</div>
+    </div>
+
+    <div class="card" id="quiz3">
+      <h3>3. Client hints are sent in which part of the HTTP exchange?</h3>
+      <div class="quiz-option" data-correct="false">Response body</div>
+      <div class="quiz-option" data-correct="false">Request body</div>
+      <div class="quiz-option" data-correct="true">Request headers</div>
+    </div>
+  </main>
+
+  <footer>
+    test.lehum.site — CSE 135 HW3 Test Target
+  </footer>
+
+  <script>
+    document.querySelectorAll('.quiz-option').forEach(function(opt) {
+      opt.addEventListener('click', function() {
+        var card = this.closest('.card');
+        var result = card.querySelector('.quiz-result');
+        if (result) return;
+        var isCorrect = this.getAttribute('data-correct') === 'true';
+        card.querySelectorAll('.quiz-option').forEach(function(o) {
+          o.classList.remove('selected');
+          if (o.getAttribute('data-correct') === 'true') o.classList.add('correct');
+          else if (o === this && !isCorrect) o.classList.add('wrong');
+        }.bind(this));
+        this.classList.add('selected');
+        if (!isCorrect) this.classList.add('wrong');
+        result = document.createElement('p');
+        result.className = 'quiz-result ' + (isCorrect ? 'correct' : 'wrong');
+        result.textContent = isCorrect ? 'Correct!' : 'Not quite. Try another question.';
+        card.appendChild(result);
+      });
+    });
+  </script>
+</body>
+</html>

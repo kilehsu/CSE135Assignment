@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Feedback – Lehum Lab</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1>Lehum Lab</h1>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="feedback.html">Feedback</a>
+      <a href="contact.html">Contact</a>
+      <a href="quiz.html">Quick Quiz</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1 class="page-title">Feedback</h1>
+    <p>Tell us how we're doing. Your input helps improve the test site.</p>
+
+    <div class="card">
+      <form id="feedbackForm">
+        <div class="form-group">
+          <label for="rating">Overall rating</label>
+          <select id="rating" name="rating" required>
+            <option value="">Choose…</option>
+            <option value="5">5 – Excellent</option>
+            <option value="4">4 – Good</option>
+            <option value="3">3 – Okay</option>
+            <option value="2">2 – Poor</option>
+            <option value="1">1 – Terrible</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="comment">Comments (optional)</label>
+          <textarea id="comment" name="comment" placeholder="What did you like or dislike?"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="category">Category</label>
+          <select id="category" name="category">
+            <option value="general">General</option>
+            <option value="usability">Usability</option>
+            <option value="design">Design</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <button type="submit">Submit feedback</button>
+      </form>
+      <p id="feedbackMessage" style="margin-top:1rem;color:var(--muted);"></p>
+    </div>
+  </main>
+
+  <footer>
+    test.lehum.site — CSE 135 HW3 Test Target
+  </footer>
+
+  <script>
+    document.getElementById('feedbackForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var rating = document.getElementById('rating').value;
+      var comment = document.getElementById('comment').value;
+      document.getElementById('feedbackMessage').textContent =
+        'Thank you! You rated us ' + rating + ' stars.' + (comment ? ' We received your comment.' : '');
+    });
+  </script>
+</body>
+</html>

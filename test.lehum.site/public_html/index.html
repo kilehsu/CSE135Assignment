@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lehum Lab – Test Site</title>
+  <link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1>Lehum Lab</h1>
+    <nav class="site-nav">
+      <a href="index.html">Home</a>
+      <a href="feedback.html">Feedback</a>
+      <a href="contact.html">Contact</a>
+      <a href="quiz.html">Quick Quiz</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h2>Welcome to the CSE 135 Test Site</h2>
+      <p>Use the links above to try forms and interactive pages. This site is used for analytics and logging practice.</p>
+    </section>
+
+    <div class="card">
+      <h3>What you can do here</h3>
+      <ul>
+        <li><a href="feedback.html">Submit feedback</a> – Rate your experience and leave a comment.</li>
+        <li><a href="contact.html">Contact</a> – Send a message with the contact form.</li>
+        <li><a href="quiz.html">Quick Quiz</a> – Answer a short quiz and see instant feedback.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>Interactive counter</h3>
+      <p>Click the buttons to change the value (generates activity for analytics).</p>
+      <div class="toggle-demo">
+        <button type="button" id="decBtn">−</button>
+        <button type="button" id="incBtn">+</button>
+        <span class="counter-display" id="counter">0</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Quick poll</h3>
+      <p>Which topic are you most interested in?</p>
+      <form id="pollForm">
+        <label><input type="radio" name="topic" value="analytics"> Analytics &amp; logging</label>
+        <label><input type="radio" name="topic" value="rest"> REST APIs</label>
+        <label><input type="radio" name="topic" value="db"> Databases</label>
+        <label><input type="radio" name="topic" value="frontend"> Frontend</label>
+        <button type="submit">Vote</button>
+      </form>
+      <p id="pollMessage" style="margin-top:0.75rem;color:var(--muted);"></p>
+    </div>
+  </main>
+
+  <footer>
+    test.lehum.site — CSE 135 HW3 Test Target
+  </footer>
+
+  <script>
+    (function() {
+      var el = document.getElementById('counter');
+      var dec = document.getElementById('decBtn');
+      var inc = document.getElementById('incBtn');
+      var n = 0;
+      if (el && dec && inc) {
+        dec.addEventListener('click', function() { el.textContent = --n; });
+        inc.addEventListener('click', function() { el.textContent = ++n; });
+      }
+      var form = document.getElementById('pollForm');
+      var msg = document.getElementById('pollMessage');
+      if (form && msg) {
+        form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          var chosen = document.querySelector('input[name="topic"]:checked');
+          msg.textContent = chosen ? 'Thanks! You chose: ' + chosen.value : 'Please pick an option.';
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
