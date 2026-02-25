@@ -25,6 +25,13 @@ Multi-page test site for CSE 135 HW3. Use it at **test.lehum.site** once the vho
    <script src="https://collector.lehum.site/collector.js"></script>
    ```
 
+## Logging (Part 2)
+
+- **Access log:** `test.lehum.site-access.log` in `${APACHE_LOG_DIR}` (e.g. `/var/log/apache2/`).
+- **Error log:** `test.lehum.site-error.log` in the same directory.
+- **Extended format:** Access log uses a custom format with combined fields plus **client hint** headers: `Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`, viewport/device/DPR, model/form-factors, prefers-color-scheme, prefers-reduced-motion, `Save-Data`.
+- **Client hints:** The vhost sends the `Accept-CH` response header so browsers send client hints on later requests; those values are logged. See [MDN: Client hints](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Client_hints). Config: repo root `apache-test.lehum.site.conf`.
+
 ## Screenshot
 
 Take **target-site.jpg** (or similar) of the live site for submission.
