@@ -4,8 +4,18 @@
  * Collects:
  *  - Static:      UA, language, cookies, JS/CSS/images enabled, screen/window size, network type
  *  - Performance: Navigation timing (full object + key milestones + total load time)
+ *  - Resources:   Resource timing aggregation (count, total transfer, slowest resources)
+ *  - Web Vitals:  LCP, CLS, INP via PerformanceObserver + vitals score
  *  - Activity:    Errors, mouse (move/click/scroll), keyboard (keydown/keyup), idle time,
- *                 page enter/exit, page identity
+ *                 page enter/exit, page identity, scroll depth
+ *  - Errors:      JS runtime, promise rejections, resource load failures (deduplicated, rate-limited)
+ *
+ * API:           collector.init(config), collector.track(event, props),
+ *                collector.set(key, val), collector.identify(userId),
+ *                collector.use(plugin)
+ *
+ * Production:    Async command queue, consent management, bot detection,
+ *                retry queue, sampling, debug mode
  *
  * Session identity is tied via a sessionStorage ID that is also sent to the
  * endpoint on every beacon — allowing server-side logs to be correlated with
@@ -13,22 +23,99 @@
  *
  * Served from: https://collector.lehum.site/collector.js
  * Endpoint:    https://collector.lehum.site/collect
+ *
+ * Modules covered:
+ *   01 - Hello Beacon (sendBeacon + fetch fallback)
+ *   02 - Technographics (UA, viewport, network, session identity)
+ *   03 - Server-Log Collection (noscript tracking pixel helper)
+ *   04 - Custom Endpoint (POST to collector endpoint)
+ *   05 - Performance Timing (navigation timing + resource timing aggregation)
+ *   06 - Web Vitals (LCP, CLS, INP via PerformanceObserver)
+ *   07 - Error Tracking (JS errors, promise rejections, resource failures)
+ *   08 - Configuration API (init/track/set/identify, sampling, debug)
+ *   09 - Extensions & Plugins (collector.use(), click/scroll-depth plugins)
+ *   10 - Production Readiness (command queue, consent, bot detection, retry)
  */
-(function () {
+(function (window, document) {
   'use strict';
 
-  /* ─── Config ────────────────────────────────────────────────────────────── */
-  var ENDPOINT = 'https://collector.lehum.site/collect';
-  var IDLE_THRESHOLD_MS = 2000;
-  var ACTIVITY_BATCH_MS = 3000;   // flush activity queue every 3 s
-  var MAX_ERRORS = 10;
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 08 — Configuration API: defaults + merge
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  var config = {
+    endpoint:         'https://collector.lehum.site/collect',
+    idleThresholdMs:  2000,
+    activityBatchMs:  3000,
+    maxErrors:        10,
+    sampleRate:       1.0,       // 0.0–1.0: fraction of sessions to collect
+    debug:            false,
+    respectDNT:       false,     // honour Do-Not-Track header
+    consentRequired:  false,     // if true, beacons wait until consent granted
+    retryLimit:       3,         // max retry attempts for failed beacons
+    retryDelayMs:     1000,      // base delay between retries (exponential)
+    trackResources:   true,      // Module 05: resource timing aggregation
+    trackVitals:      true,      // Module 06: LCP / CLS / INP
+    trackClicks:      true,      // Module 09: enriched click tracking
+    trackScrollDepth: true,      // Module 09: scroll depth extension
+    pixelPath:        '/collect/pixel.gif'  // Module 03: tracking pixel path
+  };
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 10 — Production: bot detection
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  function isBot() {
+    var ua = navigator.userAgent;
+    if (/bot|crawl|spider|slurp|facebookexternalhit|bingpreview|mediapartners|google|yandex|baidu|duckduck|headless|phantom|puppeteer|selenium|playwright/i.test(ua)) {
+      return true;
+    }
+    if (navigator.webdriver) return true;
+    return false;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 10 — Production: sampling
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  var sampled = true; // will be evaluated in init()
+
+  function evaluateSampling() {
+    if (config.sampleRate >= 1.0) { sampled = true; return; }
+    if (config.sampleRate <= 0.0) { sampled = false; return; }
+    // Consistent per-session sampling using sessionStorage
+    try {
+      var key = '_col_sampled';
+      var stored = sessionStorage.getItem(key);
+      if (stored !== null) {
+        sampled = stored === '1';
+      } else {
+        sampled = Math.random() < config.sampleRate;
+        sessionStorage.setItem(key, sampled ? '1' : '0');
+      }
+    } catch (e) {
+      sampled = Math.random() < config.sampleRate;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 10 — Production: consent management
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  var consentGranted = false;
+  var consentQueue = [];  // beacons queued while waiting for consent
+
+  function grantConsent() {
+    consentGranted = true;
+    // Flush anything that was queued before consent
+    while (consentQueue.length) {
+      var pending = consentQueue.shift();
+      doSend(pending);
+    }
+  }
+
+  function revokeConsent() {
+    consentGranted = false;
+    consentQueue = [];
+  }
 
   /* ─── Session identity ──────────────────────────────────────────────────── */
-  /**
-   * Returns a stable session ID for this tab session.
-   * Uses sessionStorage so it persists across navigations in the same tab
-   * but clears when the tab closes — no cookies needed.
-   */
   function getSessionId() {
     try {
       var sid = sessionStorage.getItem('_col_sid');
@@ -43,40 +130,99 @@
   }
 
   var SESSION_ID = getSessionId();
+  var userId = null;       // set via collector.identify()
+  var customProps = {};    // set via collector.set()
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 10 — Production: retry queue
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  var retryQueue = [];
+
+  function scheduleRetry(payload, attempt) {
+    if (attempt >= config.retryLimit) {
+      debugLog('Retry limit reached, dropping payload', payload);
+      return;
+    }
+    var delay = config.retryDelayMs * Math.pow(2, attempt);
+    retryQueue.push({ payload: payload, attempt: attempt, timer: setTimeout(function () {
+      doSend(payload, attempt + 1);
+    }, delay) });
+  }
+
+  /* ─── Debug logger ──────────────────────────────────────────────────────── */
+  function debugLog() {
+    if (!config.debug) return;
+    var args = ['[collector]'].concat(Array.prototype.slice.call(arguments));
+    console.log.apply(console, args);
+  }
 
   /* ─── Send helper ───────────────────────────────────────────────────────── */
-  function send(payload) {
+  function doSend(payload, retryAttempt) {
+    retryAttempt = retryAttempt || 0;
     payload.sessionId = SESSION_ID;
+    if (userId) payload.userId = userId;
+
+    // Merge custom props
+    var k;
+    for (k in customProps) {
+      if (customProps.hasOwnProperty(k)) {
+        payload[k] = customProps[k];
+      }
+    }
+
     var body = JSON.stringify(payload);
-    var blob = new Blob([body], { type: 'application/json' });
+    debugLog('send', payload.type, payload);
+
     if (navigator.sendBeacon) {
-      navigator.sendBeacon(ENDPOINT, blob);
+      var blob = new Blob([body], { type: 'application/json' });
+      var ok = navigator.sendBeacon(config.endpoint, blob);
+      if (!ok) scheduleRetry(payload, retryAttempt);
+    } else if (typeof fetch !== 'undefined') {
+      fetch(config.endpoint, {
+        method: 'POST',
+        body: body,
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true
+      }).catch(function () {
+        scheduleRetry(payload, retryAttempt);
+      });
     } else {
-      fetch(ENDPOINT, { method: 'POST', body: blob, keepalive: true });
+      // Last-resort: XHR
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', config.endpoint, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(body);
+      } catch (e) {
+        scheduleRetry(payload, retryAttempt);
+      }
     }
   }
 
-  /* ─── Static data ───────────────────────────────────────────────────────── */
+  function send(payload) {
+    if (!sampled) return;
+    if (config.respectDNT && navigator.doNotTrack === '1') return;
+    if (config.consentRequired && !consentGranted) {
+      consentQueue.push(payload);
+      debugLog('Queued (awaiting consent)', payload.type);
+      return;
+    }
+    doSend(payload);
+  }
 
-  /**
-   * Probe whether images are enabled by creating a 1×1 pixel inline image
-   * and checking whether it loads (onload fires vs onerror).
-   * Returns a Promise<boolean>.
-   */
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 02 — Technographics: static data
+   * ═══════════════════════════════════════════════════════════════════════════ */
+
   function probeImages() {
     return new Promise(function (resolve) {
       var img = new Image();
       img.onload = function () { resolve(true); };
       img.onerror = function () { resolve(false); };
-      // Tiny valid GIF
       img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
     });
   }
 
-  /**
-   * Probe whether CSS is enabled by checking if a style applied to a hidden
-   * test element is computed correctly.
-   */
   function probeCSS() {
     try {
       var el = document.createElement('div');
@@ -90,26 +236,24 @@
     }
   }
 
-  /**
-   * Build the static data payload. Called once after page load.
-   */
   function getStaticData(imagesEnabled) {
     var net = {};
     if (navigator.connection) {
       var c = navigator.connection;
       net = {
         effectiveType: c.effectiveType || '',
-        downlink: c.downlink || 0,
-        rtt: c.rtt || 0,
-        saveData: c.saveData || false
+        downlink:      c.downlink || 0,
+        rtt:           c.rtt || 0,
+        saveData:      c.saveData || false
       };
     }
 
     return {
       userAgent:       navigator.userAgent,
       language:        navigator.language,
+      languages:       navigator.languages ? navigator.languages.slice() : [navigator.language],
       cookiesEnabled:  navigator.cookieEnabled,
-      jsEnabled:       true,          // if this code runs, JS is enabled
+      jsEnabled:       true,
       imagesEnabled:   imagesEnabled,
       cssEnabled:      probeCSS(),
       screenWidth:     window.screen.width,
@@ -119,18 +263,53 @@
       pixelRatio:      window.devicePixelRatio || 1,
       colorScheme:     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
       timezone:        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      hardwareConcurrency: navigator.hardwareConcurrency || 0,
+      maxTouchPoints:  navigator.maxTouchPoints || 0,
       network:         net
     };
   }
 
-  /* ─── Performance timing ────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 03 — Server-Log Collection: noscript tracking pixel helper
+   * ═══════════════════════════════════════════════════════════════════════════
+   *
+   * The tracking pixel is a 1×1 GIF served by the collector server at
+   * config.pixelPath. It logs hits purely from server access logs (Apache/Nginx).
+   *
+   * To use, add this to your HTML:
+   *   <noscript>
+   *     <img src="https://collector.lehum.site/collect/pixel.gif"
+   *          alt="" width="1" height="1" />
+   *   </noscript>
+   *
+   * The server can parse the request's User-Agent, Referer, Accept-Language,
+   * Client Hints (Sec-CH-UA, Sec-CH-UA-Platform, Sec-CH-UA-Mobile), and
+   * the query string for extra data.
+   *
+   * This function injects the pixel programmatically as a bridge — it appends
+   * query params so the server log contains data the script collected.
+   */
+  function sendTrackingPixel(data) {
+    try {
+      var params = [];
+      for (var k in data) {
+        if (data.hasOwnProperty(k)) {
+          params.push(encodeURIComponent(k) + '=' + encodeURIComponent(data[k]));
+        }
+      }
+      var img = new Image();
+      img.src = config.endpoint.replace(/\/collect$/, '') + config.pixelPath +
+                '?sid=' + SESSION_ID + '&' + params.join('&') +
+                '&t=' + Date.now();
+      debugLog('tracking pixel', img.src);
+    } catch (e) { /* silent */ }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 05 — Performance Timing: navigation + resource timing
+   * ═══════════════════════════════════════════════════════════════════════════ */
   function round(n) { return Math.round(n * 100) / 100; }
 
-  /**
-   * Collect the full Navigation Timing object plus computed milestones.
-   * Must be called after the load event (with setTimeout 0 to ensure
-   * loadEventEnd is populated).
-   */
   function getPerformanceData() {
     var entries = performance.getEntriesByType('navigation');
     if (!entries.length) return {};
@@ -138,55 +317,259 @@
     var n = entries[0];
 
     return {
-      // The whole raw timing object
       raw: {
-        fetchStart:             round(n.fetchStart),
-        domainLookupStart:      round(n.domainLookupStart),
-        domainLookupEnd:        round(n.domainLookupEnd),
-        connectStart:           round(n.connectStart),
-        connectEnd:             round(n.connectEnd),
-        secureConnectionStart:  round(n.secureConnectionStart),
-        requestStart:           round(n.requestStart),
-        responseStart:          round(n.responseStart),
-        responseEnd:            round(n.responseEnd),
-        domInteractive:         round(n.domInteractive),
+        fetchStart:                 round(n.fetchStart),
+        domainLookupStart:          round(n.domainLookupStart),
+        domainLookupEnd:            round(n.domainLookupEnd),
+        connectStart:               round(n.connectStart),
+        connectEnd:                 round(n.connectEnd),
+        secureConnectionStart:      round(n.secureConnectionStart),
+        requestStart:               round(n.requestStart),
+        responseStart:              round(n.responseStart),
+        responseEnd:                round(n.responseEnd),
+        domInteractive:             round(n.domInteractive),
         domContentLoadedEventStart: round(n.domContentLoadedEventStart),
         domContentLoadedEventEnd:   round(n.domContentLoadedEventEnd),
-        domComplete:            round(n.domComplete),
-        loadEventStart:         round(n.loadEventStart),
-        loadEventEnd:           round(n.loadEventEnd),
-        redirectCount:          n.redirectCount,
-        type:                   n.type,
-        transferSize:           n.transferSize,
-        encodedBodySize:        n.encodedBodySize,
-        decodedBodySize:        n.decodedBodySize
+        domComplete:                round(n.domComplete),
+        loadEventStart:             round(n.loadEventStart),
+        loadEventEnd:               round(n.loadEventEnd),
+        redirectCount:              n.redirectCount,
+        type:                       n.type,
+        transferSize:               n.transferSize,
+        encodedBodySize:            n.encodedBodySize,
+        decodedBodySize:            n.decodedBodySize
       },
-      // Specifically when page started loading
-      pageStarted:  new Date(performance.timeOrigin + n.fetchStart).toISOString(),
-      // Specifically when page ended loading
-      pageEnded:    new Date(performance.timeOrigin + n.loadEventEnd).toISOString(),
-      // Total load time in milliseconds (manually calculated)
-      totalLoadMs:  round(n.loadEventEnd - n.fetchStart),
-      // Key milestones
-      ttfb:         round(n.responseStart - n.requestStart),
-      dnsLookup:    round(n.domainLookupEnd - n.domainLookupStart),
-      tcpConnect:   round(n.connectEnd - n.connectStart),
-      tlsHandshake: n.secureConnectionStart > 0
-                      ? round(n.connectEnd - n.secureConnectionStart) : 0,
-      download:     round(n.responseEnd - n.responseStart),
+      pageStarted:    new Date(performance.timeOrigin + n.fetchStart).toISOString(),
+      pageEnded:      new Date(performance.timeOrigin + n.loadEventEnd).toISOString(),
+      totalLoadMs:    round(n.loadEventEnd - n.fetchStart),
+      ttfb:           round(n.responseStart - n.requestStart),
+      dnsLookup:      round(n.domainLookupEnd - n.domainLookupStart),
+      tcpConnect:     round(n.connectEnd - n.connectStart),
+      tlsHandshake:   n.secureConnectionStart > 0
+                        ? round(n.connectEnd - n.secureConnectionStart) : 0,
+      download:       round(n.responseEnd - n.responseStart),
       domInteractive: round(n.domInteractive - n.fetchStart),
-      domComplete:  round(n.domComplete - n.fetchStart),
-      transferSize: n.transferSize,
-      headerSize:   n.transferSize - n.encodedBodySize
+      domComplete:    round(n.domComplete - n.fetchStart),
+      transferSize:   n.transferSize,
+      headerSize:     n.transferSize - n.encodedBodySize
     };
   }
 
-  /* ─── Error tracking ────────────────────────────────────────────────────── */
+  /**
+   * Module 05 — Resource Timing aggregation
+   * Summarises all sub-resource loads (scripts, stylesheets, images, fonts, etc.)
+   */
+  function getResourceTimingData() {
+    var resources = performance.getEntriesByType('resource');
+    if (!resources.length) return null;
+
+    var totalTransfer = 0;
+    var totalDuration = 0;
+    var byType = {};        // group by initiatorType
+    var slowest = [];       // top 5 slowest
+
+    for (var i = 0; i < resources.length; i++) {
+      var r = resources[i];
+      totalTransfer += r.transferSize || 0;
+      totalDuration += r.duration || 0;
+
+      var type = r.initiatorType || 'other';
+      if (!byType[type]) {
+        byType[type] = { count: 0, totalTransfer: 0, totalDuration: 0 };
+      }
+      byType[type].count++;
+      byType[type].totalTransfer += r.transferSize || 0;
+      byType[type].totalDuration += r.duration || 0;
+
+      slowest.push({
+        name:         r.name.substring(0, 120),  // truncate long URLs
+        type:         type,
+        duration:     round(r.duration),
+        transferSize: r.transferSize || 0
+      });
+    }
+
+    // Sort slowest descending and take top 5
+    slowest.sort(function (a, b) { return b.duration - a.duration; });
+    slowest = slowest.slice(0, 5);
+
+    // Round byType totals
+    var t;
+    for (t in byType) {
+      if (byType.hasOwnProperty(t)) {
+        byType[t].totalDuration = round(byType[t].totalDuration);
+      }
+    }
+
+    return {
+      count:          resources.length,
+      totalTransfer:  totalTransfer,
+      totalDuration:  round(totalDuration),
+      byType:         byType,
+      slowest:        slowest
+    };
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 06 — Web Vitals: LCP, CLS, INP via PerformanceObserver
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  var vitals = {
+    lcp:  null,   // Largest Contentful Paint (ms)
+    cls:  0,      // Cumulative Layout Shift (score, unitless)
+    inp:  null    // Interaction to Next Paint (ms)
+  };
+
+  // LCP — observe largest-contentful-paint entries; keep last value
+  function initLCP() {
+    try {
+      var observer = new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        if (entries.length) {
+          var last = entries[entries.length - 1];
+          vitals.lcp = round(last.startTime);
+          debugLog('LCP', vitals.lcp, last.element ? last.element.tagName : '');
+        }
+      });
+      observer.observe({ type: 'largest-contentful-paint', buffered: true });
+    } catch (e) {
+      debugLog('LCP observer not supported');
+    }
+  }
+
+  // CLS — accumulate layout-shift values (excluding those with recent input)
+  function initCLS() {
+    try {
+      var sessionValue = 0;
+      var sessionEntries = [];
+      var observer = new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          // Only count shifts without recent user input
+          if (!entry.hadRecentInput) {
+            sessionValue += entry.value;
+            sessionEntries.push(entry);
+          }
+        }
+        vitals.cls = round(sessionValue * 1000) / 1000;  // 3 decimal places
+        debugLog('CLS', vitals.cls);
+      });
+      observer.observe({ type: 'layout-shift', buffered: true });
+    } catch (e) {
+      debugLog('CLS observer not supported');
+    }
+  }
+
+  // INP — track all event timing entries, keep the worst interaction
+  // INP is the highest single-interaction latency (or p98 for pages with
+  // many interactions, but we keep the max for simplicity)
+  function initINP() {
+    try {
+      var interactions = {};  // interactionId → max duration
+
+      var observer = new PerformanceObserver(function (list) {
+        var entries = list.getEntries();
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          if (!entry.interactionId) continue;
+
+          var id = entry.interactionId;
+          var dur = entry.duration;
+          if (!interactions[id] || dur > interactions[id]) {
+            interactions[id] = dur;
+          }
+        }
+
+        // INP = worst interaction (for low interaction counts) or p98
+        var durations = [];
+        var key;
+        for (key in interactions) {
+          if (interactions.hasOwnProperty(key)) {
+            durations.push(interactions[key]);
+          }
+        }
+        if (durations.length) {
+          durations.sort(function (a, b) { return a - b; });
+          // Use p98 if we have 50+ interactions, otherwise use max
+          var idx = durations.length >= 50
+            ? Math.floor(durations.length * 0.98) - 1
+            : durations.length - 1;
+          vitals.inp = round(durations[Math.max(0, idx)]);
+          debugLog('INP', vitals.inp);
+        }
+      });
+      observer.observe({ type: 'event', buffered: true, durationThreshold: 16 });
+    } catch (e) {
+      debugLog('INP observer not supported');
+    }
+  }
+
+  /**
+   * Module 06 — getVitalsScore()
+   * Evaluates each vital against Google's "good / needs-improvement / poor"
+   * thresholds and returns an overall rating.
+   */
+  function getVitalsScore() {
+    function rateLCP(val) {
+      if (val === null) return 'unknown';
+      if (val <= 2500) return 'good';
+      if (val <= 4000) return 'needs-improvement';
+      return 'poor';
+    }
+    function rateCLS(val) {
+      if (val <= 0.1) return 'good';
+      if (val <= 0.25) return 'needs-improvement';
+      return 'poor';
+    }
+    function rateINP(val) {
+      if (val === null) return 'unknown';
+      if (val <= 200) return 'good';
+      if (val <= 500) return 'needs-improvement';
+      return 'poor';
+    }
+
+    var lcpRating = rateLCP(vitals.lcp);
+    var clsRating = rateCLS(vitals.cls);
+    var inpRating = rateINP(vitals.inp);
+
+    // Overall: poor if any is poor, needs-improvement if any is needs-improvement
+    var overall = 'good';
+    if (lcpRating === 'poor' || clsRating === 'poor' || inpRating === 'poor') {
+      overall = 'poor';
+    } else if (lcpRating === 'needs-improvement' || clsRating === 'needs-improvement' || inpRating === 'needs-improvement') {
+      overall = 'needs-improvement';
+    } else if (lcpRating === 'unknown' || inpRating === 'unknown') {
+      overall = 'incomplete';
+    }
+
+    return {
+      lcp:     { value: vitals.lcp, rating: lcpRating },
+      cls:     { value: vitals.cls, rating: clsRating },
+      inp:     { value: vitals.inp, rating: inpRating },
+      overall: overall
+    };
+  }
+
+  function sendVitals() {
+    var score = getVitalsScore();
+    send({
+      type:      'web-vitals',
+      vitals:    score,
+      timestamp: new Date().toISOString(),
+      url:       window.location.href,
+      page:      document.title
+    });
+    debugLog('vitals sent', score);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 07 — Error Tracking
+   * ═══════════════════════════════════════════════════════════════════════════ */
   var reportedErrors = {};
   var errorCount = 0;
 
   function reportError(errorData) {
-    if (errorCount >= MAX_ERRORS) return;
+    if (errorCount >= config.maxErrors) return;
     var key = (errorData.type || '') + ':' + (errorData.message || '') +
               ':' + (errorData.source || '') + ':' + (errorData.line || '');
     if (reportedErrors[key]) return;
@@ -202,7 +585,6 @@
     });
   }
 
-  // JS runtime errors
   window.addEventListener('error', function (event) {
     if (event instanceof ErrorEvent) {
       reportError({
@@ -213,12 +595,9 @@
         column:  event.colno,
         stack:   event.error ? event.error.stack : ''
       });
-    } else {
-      // Resource load failure (must use capture phase — see below)
     }
   });
 
-  // Resource load failures — must use capture phase (true)
   window.addEventListener('error', function (event) {
     if (!(event instanceof ErrorEvent)) {
       var t = event.target;
@@ -232,7 +611,6 @@
     }
   }, true);
 
-  // Unhandled promise rejections
   window.addEventListener('unhandledrejection', function (event) {
     var reason = event.reason;
     reportError({
@@ -242,38 +620,37 @@
     });
   });
 
-  /* ─── Activity tracking ─────────────────────────────────────────────────── */
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * Activity tracking (existing) + Module 09 enhancements
+   * ═══════════════════════════════════════════════════════════════════════════ */
   var activityQueue = [];
   var idleTimer = null;
   var idleStart = null;
   var pageEnteredAt = new Date().toISOString();
+  var activityInterval = null;
 
   function pushActivity(event) {
     activityQueue.push(event);
   }
 
-  // Flush the activity queue to the endpoint
   function flushActivity() {
     if (!activityQueue.length) return;
     send({
-      type:       'activity',
-      events:     activityQueue.splice(0),
-      timestamp:  new Date().toISOString(),
-      url:        window.location.href,
-      page:       document.title
+      type:      'activity',
+      events:    activityQueue.splice(0),
+      timestamp: new Date().toISOString(),
+      url:       window.location.href,
+      page:      document.title
     });
   }
-
-  setInterval(flushActivity, ACTIVITY_BATCH_MS);
 
   // ── Idle detection ──────────────────────────────────────────────────────
   function resetIdle() {
     if (idleStart !== null) {
-      // Idle period just ended
       var idleDuration = Date.now() - idleStart;
       pushActivity({
-        kind:      'idle-end',
-        endedAt:   new Date().toISOString(),
+        kind:       'idle-end',
+        endedAt:    new Date().toISOString(),
         durationMs: idleDuration
       });
       idleStart = null;
@@ -282,18 +659,17 @@
     idleTimer = setTimeout(function () {
       idleStart = Date.now();
       pushActivity({
-        kind:     'idle-start',
+        kind:      'idle-start',
         startedAt: new Date().toISOString()
       });
-    }, IDLE_THRESHOLD_MS);
+    }, config.idleThresholdMs);
   }
 
   // ── Mouse activity ──────────────────────────────────────────────────────
-  // Throttle mousemove to avoid flooding
   var lastMoveTime = 0;
   document.addEventListener('mousemove', function (e) {
     var now = Date.now();
-    if (now - lastMoveTime < 200) return;   // max 5 per second
+    if (now - lastMoveTime < 200) return;
     lastMoveTime = now;
     resetIdle();
     pushActivity({
@@ -310,7 +686,7 @@
       kind:   'click',
       x:      e.clientX,
       y:      e.clientY,
-      button: e.button,   // 0=left, 1=middle, 2=right
+      button: e.button,
       t:      Date.now()
     });
   });
@@ -347,23 +723,151 @@
   // ── Page exit ───────────────────────────────────────────────────────────
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') {
-      // Flush pending activity before leaving
       flushActivity();
 
+      // Send final web vitals on page exit (most accurate timing)
+      if (config.trackVitals) {
+        sendVitals();
+      }
+
       send({
-        type:       'page-exit',
-        url:        window.location.href,
-        page:       document.title,
-        enteredAt:  pageEnteredAt,
-        exitedAt:   new Date().toISOString(),
-        timestamp:  new Date().toISOString()
+        type:      'page-exit',
+        url:       window.location.href,
+        page:      document.title,
+        enteredAt: pageEnteredAt,
+        exitedAt:  new Date().toISOString(),
+        timestamp: new Date().toISOString()
       });
     }
   });
 
-  /* ─── Pageview + static + performance beacon ────────────────────────────── */
-  function sendPageview(staticData, perfData) {
-    send({
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 09 — Extensions & Plugins: enriched click tracking
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  function initClickTracking() {
+    document.addEventListener('click', function (e) {
+      var target = e.target;
+      if (!target) return;
+
+      // Walk up to find nearest meaningful element (link, button, etc.)
+      var el = target;
+      var depth = 0;
+      while (el && depth < 5) {
+        if (el.tagName === 'A' || el.tagName === 'BUTTON' ||
+            el.tagName === 'INPUT' || el.getAttribute && el.getAttribute('role') === 'button') {
+          break;
+        }
+        el = el.parentElement;
+        depth++;
+      }
+      if (!el) el = target;
+
+      pushActivity({
+        kind:      'click-enriched',
+        tagName:   el.tagName,
+        id:        el.id || '',
+        className: (el.className && typeof el.className === 'string')
+                     ? el.className.substring(0, 100) : '',
+        text:      (el.textContent || '').trim().substring(0, 50),
+        href:      el.href || '',
+        x:         e.clientX,
+        y:         e.clientY,
+        t:         Date.now()
+      });
+    });
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 09 — Extensions & Plugins: scroll depth tracking
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  function initScrollDepth() {
+    var maxDepth = 0;
+    var milestones = { 25: false, 50: false, 75: false, 90: false, 100: false };
+    var throttleTimer = null;
+
+    function calcScrollPercent() {
+      var scrollTop = window.scrollY || document.documentElement.scrollTop;
+      var docHeight = Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight
+      );
+      var winHeight = window.innerHeight;
+      if (docHeight <= winHeight) return 100;
+      return Math.min(100, Math.round((scrollTop + winHeight) / docHeight * 100));
+    }
+
+    function checkMilestones() {
+      var pct = calcScrollPercent();
+      if (pct > maxDepth) maxDepth = pct;
+
+      for (var m in milestones) {
+        if (milestones.hasOwnProperty(m) && !milestones[m] && pct >= parseInt(m, 10)) {
+          milestones[m] = true;
+          pushActivity({
+            kind:       'scroll-depth',
+            milestone:  parseInt(m, 10),
+            currentPct: pct,
+            t:          Date.now()
+          });
+          debugLog('scroll depth milestone', m + '%');
+        }
+      }
+    }
+
+    document.addEventListener('scroll', function () {
+      if (throttleTimer) return;
+      throttleTimer = setTimeout(function () {
+        throttleTimer = null;
+        checkMilestones();
+      }, 250);
+    });
+
+    // Also send max depth on page exit
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') {
+        pushActivity({
+          kind:     'scroll-depth-max',
+          maxDepth: maxDepth,
+          t:        Date.now()
+        });
+      }
+    });
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 09 — Extensions & Plugins: plugin system
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  var plugins = [];
+
+  /**
+   * collector.use(plugin)
+   * A plugin is an object with:
+   *   - name (string)
+   *   - init(collector) — called when collector.init() runs (or immediately if already init'd)
+   */
+  function registerPlugin(plugin) {
+    if (!plugin || typeof plugin.init !== 'function') {
+      debugLog('Invalid plugin — must have init(collector) method');
+      return;
+    }
+    plugins.push(plugin);
+    debugLog('Plugin registered:', plugin.name || 'unnamed');
+
+    // If collector is already initialized, call init immediately
+    if (initialized) {
+      try {
+        plugin.init(publicAPI);
+      } catch (e) {
+        debugLog('Plugin init error:', plugin.name, e);
+      }
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 01/04 — Pageview + static + performance beacon
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  function sendPageview(staticData, perfData, resourceData) {
+    var payload = {
       type:        'pageview',
       url:         window.location.href,
       page:        document.title,
@@ -372,20 +876,238 @@
       enteredAt:   pageEnteredAt,
       static:      staticData,
       performance: perfData
+    };
+
+    if (resourceData) {
+      payload.resources = resourceData;
+    }
+
+    send(payload);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 08 — Configuration API: init / track / set / identify
+   * MODULE 10 — Production: async command queue
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  var initialized = false;
+
+  /**
+   * collector.init(userConfig)
+   * Merges user config, evaluates sampling, checks for bots,
+   * starts observers, initialises plugins.
+   */
+  function init(userConfig) {
+    if (initialized) {
+      debugLog('Already initialized');
+      return;
+    }
+
+    // Merge user config
+    if (userConfig) {
+      var k;
+      for (k in userConfig) {
+        if (userConfig.hasOwnProperty(k) && config.hasOwnProperty(k)) {
+          config[k] = userConfig[k];
+        }
+      }
+    }
+
+    // Bot detection — skip everything for bots
+    if (isBot()) {
+      debugLog('Bot detected, disabling collection');
+      sampled = false;
+      initialized = true;
+      return;
+    }
+
+    // Sampling
+    evaluateSampling();
+    if (!sampled) {
+      debugLog('Session not sampled (rate=' + config.sampleRate + ')');
+      initialized = true;
+      return;
+    }
+
+    // DNT
+    if (config.respectDNT && navigator.doNotTrack === '1') {
+      debugLog('DNT enabled, disabling collection');
+      sampled = false;
+      initialized = true;
+      return;
+    }
+
+    // Start Web Vitals observers (Module 06)
+    if (config.trackVitals) {
+      initLCP();
+      initCLS();
+      initINP();
+    }
+
+    // Start enriched click tracking (Module 09)
+    if (config.trackClicks) {
+      initClickTracking();
+    }
+
+    // Start scroll depth tracking (Module 09)
+    if (config.trackScrollDepth) {
+      initScrollDepth();
+    }
+
+    // Start activity batch interval
+    activityInterval = setInterval(flushActivity, config.activityBatchMs);
+
+    // Initialise all registered plugins
+    for (var i = 0; i < plugins.length; i++) {
+      try {
+        plugins[i].init(publicAPI);
+      } catch (e) {
+        debugLog('Plugin init error:', plugins[i].name, e);
+      }
+    }
+
+    initialized = true;
+    debugLog('Initialized', config);
+
+    // Fire pageview after load
+    if (document.readyState === 'complete') {
+      setTimeout(firePageview, 0);
+    } else {
+      window.addEventListener('load', function () {
+        setTimeout(firePageview, 0);
+      });
+    }
+  }
+
+  function firePageview() {
+    probeImages().then(function (imagesOk) {
+      var staticData = getStaticData(imagesOk);
+      var perfData   = getPerformanceData();
+      var resData    = config.trackResources ? getResourceTimingData() : null;
+      sendPageview(staticData, perfData, resData);
+
+      // Also send a tracking pixel for server-log correlation (Module 03)
+      sendTrackingPixel({ url: window.location.href, t: Date.now() });
+
+      resetIdle();
     });
   }
 
-  // Wait for full page load before collecting timing + static data
-  window.addEventListener('load', function () {
-    setTimeout(function () {
-      probeImages().then(function (imagesOk) {
-        var staticData = getStaticData(imagesOk);
-        var perfData   = getPerformanceData();
-        sendPageview(staticData, perfData);
-        // Start idle detection after page load
-        resetIdle();
-      });
-    }, 0);
-  });
+  /**
+   * collector.track(eventName, properties)
+   * Send a custom event. Useful for tracking business-specific actions.
+   */
+  function track(eventName, properties) {
+    if (!initialized) {
+      debugLog('Not initialized — call collector.init() first');
+      return;
+    }
+    send({
+      type:       'custom-event',
+      event:      eventName,
+      properties: properties || {},
+      timestamp:  new Date().toISOString(),
+      url:        window.location.href,
+      page:       document.title
+    });
+  }
 
-})();
+  /**
+   * collector.set(key, value)
+   * Set a custom property that will be included in every subsequent beacon.
+   */
+  function set(key, value) {
+    customProps[key] = value;
+    debugLog('set', key, value);
+  }
+
+  /**
+   * collector.identify(uid)
+   * Associate a user ID with this session.
+   */
+  function identify(uid) {
+    userId = uid;
+    debugLog('identify', uid);
+    // Persist so subsequent pages in this session carry the ID
+    try {
+      sessionStorage.setItem('_col_uid', uid);
+    } catch (e) { /* silent */ }
+  }
+
+  // Restore userId from session if previously identified
+  try {
+    var storedUid = sessionStorage.getItem('_col_uid');
+    if (storedUid) userId = storedUid;
+  } catch (e) { /* silent */ }
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * MODULE 10 — Production: async loading & command queue
+   *
+   * Usage (in the host page):
+   *   <script>
+   *     window.CollectorQueue = window.CollectorQueue || [];
+   *     window.CollectorQueue.push(['init', { endpoint: '...' }]);
+   *     window.CollectorQueue.push(['track', 'signup', { plan: 'pro' }]);
+   *     window.CollectorQueue.push(['identify', 'user-123']);
+   *   </script>
+   *   <script src="collector.js" async></script>
+   *
+   * When the script loads, it drains the queue and replaces push()
+   * with direct execution.
+   * ═══════════════════════════════════════════════════════════════════════════ */
+
+  var publicAPI = {
+    init:           init,
+    track:          track,
+    set:            set,
+    identify:       identify,
+    use:            registerPlugin,
+    grantConsent:   grantConsent,
+    revokeConsent:  revokeConsent,
+    getVitalsScore: getVitalsScore,
+    // Expose for plugins
+    send:           send,
+    pushActivity:   pushActivity,
+    config:         config,
+    SESSION_ID:     SESSION_ID
+  };
+
+  /**
+   * Process a queued command: ['methodName', arg1, arg2, ...]
+   */
+  function processCommand(cmd) {
+    if (!Array.isArray(cmd) || !cmd.length) return;
+    var method = cmd[0];
+    var args = cmd.slice(1);
+    if (typeof publicAPI[method] === 'function') {
+      publicAPI[method].apply(null, args);
+    } else {
+      debugLog('Unknown command:', method);
+    }
+  }
+
+  // Drain any pre-queued commands
+  var queue = window.CollectorQueue || [];
+  for (var i = 0; i < queue.length; i++) {
+    processCommand(queue[i]);
+  }
+
+  // Replace the array push with direct execution
+  window.CollectorQueue = {
+    push: function (cmd) {
+      processCommand(cmd);
+    }
+  };
+
+  // Expose the public API globally
+  window.collector = publicAPI;
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+   * Auto-init if no command queue was used
+   * (backwards compatibility — if the script is loaded without CollectorQueue,
+   *  it self-initializes with default config just like the original version)
+   * ═══════════════════════════════════════════════════════════════════════════ */
+  if (!initialized && !queue.length) {
+    init();
+  }
+
+})(window, document);
