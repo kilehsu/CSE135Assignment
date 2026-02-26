@@ -47,13 +47,22 @@ function parseBody(req) {
 }
 
 /** Upsert the session row so every table's FK is satisfied. */
-async function upsertSession(client, sessionId) {
-  await client.query(
-    `INSERT INTO sessions (id, first_seen, last_seen)
-     VALUES ($1, NOW(), NOW())
-     ON CONFLICT (id) DO UPDATE SET last_seen = NOW()`,
-    [sessionId]
-  );
+async function upsertSession(client, sessionId, userId) {
+  if (userId) {
+    await client.query(
+      `INSERT INTO sessions (id, user_id, first_seen, last_seen)
+       VALUES ($1, $2, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET last_seen = NOW(), user_id = COALESCE($2, sessions.user_id)`,
+      [sessionId, userId]
+    );
+  } else {
+    await client.query(
+      `INSERT INTO sessions (id, first_seen, last_seen)
+       VALUES ($1, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET last_seen = NOW()`,
+      [sessionId]
+    );
+  }
 }
 
 // ─── Route: POST /collect ─────────────────────────────────────────────────────
@@ -68,7 +77,7 @@ app.post('/collect', async (req, res) => {
   const client = await pool.connect();
 
   try {
-    await upsertSession(client, sessionId);
+    await upsertSession(client, sessionId, data.userId || null);
 
     switch (type) {
 
@@ -77,6 +86,7 @@ app.post('/collect', async (req, res) => {
         const s = data.static      || {};
         const p = data.performance || {};
 
+        const r = data.resources || {};
         await client.query(
           `INSERT INTO pageviews (
             session_id, url, page, referrer, entered_at,
@@ -87,7 +97,9 @@ app.post('/collect', async (req, res) => {
             page_started, page_ended, total_load_ms,
             ttfb_ms, dns_ms, tcp_ms, tls_ms, download_ms,
             dom_interactive_ms, dom_complete_ms,
-            transfer_size, perf_raw
+            transfer_size, perf_raw,
+            resource_count, resource_total_transfer, resource_total_duration,
+            resource_by_type, resource_slowest
           ) VALUES (
             $1,$2,$3,$4,$5,
             $6,$7,$8,$9,
@@ -97,7 +109,9 @@ app.post('/collect', async (req, res) => {
             $20,$21,$22,
             $23,$24,$25,$26,$27,
             $28,$29,
-            $30,$31
+            $30,$31,
+            $32,$33,$34,
+            $35,$36
           )`,
           [
             sessionId,
@@ -131,6 +145,11 @@ app.post('/collect', async (req, res) => {
             p.domComplete    ?? null,
             p.transferSize   ?? null,
             p.raw            ? JSON.stringify(p.raw) : null,
+            r.count          ?? null,
+            r.totalTransfer  ?? null,
+            r.totalDuration  ?? null,
+            r.byType         ? JSON.stringify(r.byType) : null,
+            r.slowest        ? JSON.stringify(r.slowest) : null,
           ]
         );
         break;
@@ -195,8 +214,49 @@ app.post('/collect', async (req, res) => {
         break;
       }
 
+      // ── web-vitals ──────────────────────────────────────────────────────
+      case 'web-vitals': {
+        const v = data.vitals || {};
+        await client.query(
+          `INSERT INTO web_vitals
+             (session_id, url, page, lcp_ms, lcp_rating, cls_score, cls_rating,
+              inp_ms, inp_rating, overall)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [
+            sessionId,
+            data.url  || null,
+            data.page || null,
+            v.lcp ? v.lcp.value : null,
+            v.lcp ? v.lcp.rating : null,
+            v.cls ? v.cls.value : null,
+            v.cls ? v.cls.rating : null,
+            v.inp ? v.inp.value : null,
+            v.inp ? v.inp.rating : null,
+            v.overall || null,
+          ]
+        );
+        break;
+      }
+
+      // ── custom-event ────────────────────────────────────────────────────
+      case 'custom-event': {
+        await client.query(
+          `INSERT INTO custom_events
+             (session_id, user_id, url, page, event_name, properties)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            sessionId,
+            data.userId || null,
+            data.url    || null,
+            data.page   || null,
+            data.event  || 'unknown',
+            data.properties ? JSON.stringify(data.properties) : null,
+          ]
+        );
+        break;
+      }
+
       default:
-        // Accept unknown types gracefully — no-op
         break;
     }
 

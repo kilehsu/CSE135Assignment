@@ -1,0 +1,87 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{CSE 135 HW3 --- REST API Routes}
+\author{Aaron Chiuwei, Kile Hsu, Varun Sharma}
+\date{}
+
+\begin{document}
+\maketitle
+\noindent Host: \texttt{reporting.lehum.site}
+
+\section*{Sessions}
+\begin{tabular}{@{}llp{7.5cm}@{}}
+\toprule
+Method & Route & Description \\
+\midrule
+GET    & /api/sessions       & Retrieve all sessions \\
+GET    & /api/sessions/\{id\}  & Retrieve a specific session \\
+POST   & /api/sessions       & Create a new session \\
+PUT    & /api/sessions/\{id\}  & Update a session \\
+DELETE & /api/sessions/\{id\}  & Delete a session and cascading data \\
+\bottomrule
+\end{tabular}
+
+\section*{Pageviews (Static + Performance)}
+\begin{tabular}{@{}llp{7.5cm}@{}}
+\toprule
+Method & Route & Description \\
+\midrule
+GET    & /api/pageviews       & Retrieve all pageviews \\
+GET    & /api/pageviews/\{id\}  & Retrieve a specific pageview \\
+POST   & /api/pageviews       & Add a new pageview \\
+PUT    & /api/pageviews/\{id\}  & Update a pageview \\
+DELETE & /api/pageviews/\{id\}  & Delete a pageview \\
+\bottomrule
+\end{tabular}
+
+\section*{Activity Events}
+\begin{tabular}{@{}llp{7.5cm}@{}}
+\toprule
+Method & Route & Description \\
+\midrule
+GET    & /api/activity       & Retrieve all activity events \\
+GET    & /api/activity/\{id\}  & Retrieve a specific activity event \\
+POST   & /api/activity       & Add a new activity event \\
+PUT    & /api/activity/\{id\}  & Update an activity event \\
+DELETE & /api/activity/\{id\}  & Delete an activity event \\
+\bottomrule
+\end{tabular}
+
+\section*{Page Exits}
+\begin{tabular}{@{}llp{7.5cm}@{}}
+\toprule
+Method & Route & Description \\
+\midrule
+GET    & /api/exits       & Retrieve all page exits \\
+GET    & /api/exits/\{id\}  & Retrieve a specific page exit \\
+POST   & /api/exits       & Add a new page exit \\
+PUT    & /api/exits/\{id\}  & Update a page exit \\
+DELETE & /api/exits/\{id\}  & Delete a page exit \\
+\bottomrule
+\end{tabular}
+
+\section*{Errors}
+\begin{tabular}{@{}llp{7.5cm}@{}}
+\toprule
+Method & Route & Description \\
+\midrule
+GET    & /api/errors       & Retrieve all errors \\
+GET    & /api/errors/\{id\}  & Retrieve a specific error \\
+POST   & /api/errors       & Add a new error \\
+PUT    & /api/errors/\{id\}  & Update an error \\
+DELETE & /api/errors/\{id\}  & Delete an error \\
+\bottomrule
+\end{tabular}
+
+\section*{Notes}
+\begin{itemize}
+  \item GET without an ID returns all records; with an ID returns one.
+  \item POST does not take an ID (auto-generated). PUT and DELETE require an ID.
+  \item Data stored in PostgreSQL. Session IDs from \texttt{sessionStorage}.
+  \item Collector ingest (\texttt{POST /collect}) lives on \texttt{collector.lehum.site}, separate from these routes.
+\end{itemize}
+
+\end{document}
