@@ -25,11 +25,18 @@ const PORT = process.env.PORT || 3001;
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 app.use(cors({
-  origin: [
-    process.env.ALLOWED_ORIGIN || 'https://test.lehum.site',
-    'http://test.lehum.site',
-  ],
+  origin: function (origin, callback) {
+    const allowed = [
+      process.env.ALLOWED_ORIGIN || 'https://test.lehum.site',
+      'http://test.lehum.site',
+    ];
+    // Allow requests with no origin (curl, sendBeacon on some browsers)
+    if (!origin || allowed.includes(origin)) return callback(null, true);
+    callback(null, false);
+  },
   methods: ['POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+  credentials: true,
 }));
 
 // sendBeacon sends text/plain; fetch sends application/json — accept both
