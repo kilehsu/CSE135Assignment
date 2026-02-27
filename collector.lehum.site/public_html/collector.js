@@ -6,12 +6,12 @@
     idleThresholdMs: 2000,
     activityBatchMs: 3000,
     maxErrors: 10,
-    sampleRate: 1.0, // 0.0–1.0: fraction of sessions to collect
+    sampleRate: 1.0,
     debug: false,
-    respectDNT: false, // honour Do-Not-Track header
-    consentRequired: false, // if true, beacons wait until consent granted
-    retryLimit: 3, // max retry attempts for failed beacons
-    retryDelayMs: 1000, // base delay between retries (exponential)
+    respectDNT: false,
+    consentRequired: false,
+    retryLimit: 3,
+    retryDelayMs: 1000,
     trackResources: true,
     trackVitals: true,
     trackClicks: true,
@@ -32,7 +32,7 @@
     return false;
   }
 
-  var sampled = true; // will be evaluated in init()
+  var sampled = true;
 
   function evaluateSampling() {
     if (config.sampleRate >= 1.0) {
@@ -43,7 +43,7 @@
       sampled = false;
       return;
     }
-    // Consistent per-session sampling using sessionStorage
+    // per-session sampling using sessionStorage
     try {
       var key = "_col_sampled";
       var stored = sessionStorage.getItem(key);
@@ -59,11 +59,11 @@
   }
 
   var consentGranted = false;
-  var consentQueue = []; // beacons queued while waiting for consent
+  var consentQueue = []; // beacons queued
 
   function grantConsent() {
     consentGranted = true;
-    // Flush anything that was queued before consent
+    // queued before consent
     while (consentQueue.length) {
       var pending = consentQueue.shift();
       doSend(pending);
@@ -89,8 +89,8 @@
   }
 
   var SESSION_ID = getSessionId();
-  var userId = null; // set via collector.identify()
-  var customProps = {}; // set via collector.set()
+  var userId = null;
+  var customProps = {};
 
   var retryQueue = [];
 
@@ -119,8 +119,6 @@
     retryAttempt = retryAttempt || 0;
     payload.sessionId = SESSION_ID;
     if (userId) payload.userId = userId;
-
-    // Merge custom props
     var k;
     for (k in customProps) {
       if (customProps.hasOwnProperty(k)) {
@@ -145,7 +143,7 @@
         scheduleRetry(payload, retryAttempt);
       });
     } else {
-      // Last-resort: XHR
+      // XHR
       try {
         var xhr = new XMLHttpRequest();
         xhr.open("POST", config.endpoint, true);
@@ -336,7 +334,7 @@
       byType[type].totalDuration += r.duration || 0;
 
       slowest.push({
-        name: r.name.substring(0, 120), // truncate long URLs
+        name: r.name.substring(0, 120),
         type: type,
         duration: round(r.duration),
         transferSize: r.transferSize || 0,
@@ -349,7 +347,6 @@
     });
     slowest = slowest.slice(0, 5);
 
-    // Round byType totals
     var t;
     for (t in byType) {
       if (byType.hasOwnProperty(t)) {
@@ -367,12 +364,11 @@
   }
 
   var vitals = {
-    lcp: null, // Largest Contentful Paint (ms)
-    cls: 0, // Cumulative Layout Shift (score, unitless)
-    inp: null, // Interaction to Next Paint (ms)
+    lcp: null,
+    cls: 0,
+    inp: null,
   };
 
-  // LCP — observe largest-contentful-paint entries; keep last value
   function initLCP() {
     try {
       var observer = new PerformanceObserver(function (list) {
@@ -389,7 +385,7 @@
     }
   }
 
-  // CLS — accumulate layout-shift values (excluding those with recent input)
+  // CLS
   function initCLS() {
     try {
       var sessionValue = 0;
@@ -398,13 +394,12 @@
         var entries = list.getEntries();
         for (var i = 0; i < entries.length; i++) {
           var entry = entries[i];
-          // Only count shifts without recent user input
           if (!entry.hadRecentInput) {
             sessionValue += entry.value;
             sessionEntries.push(entry);
           }
         }
-        vitals.cls = round(sessionValue * 1000) / 1000; // 3 decimal places
+        vitals.cls = round(sessionValue * 1000) / 1000;
         debugLog("CLS", vitals.cls);
       });
       observer.observe({ type: "layout-shift", buffered: true });
@@ -487,7 +482,6 @@
     var clsRating = rateCLS(vitals.cls);
     var inpRating = rateINP(vitals.inp);
 
-    // Overall: poor if any is poor, needs-improvement if any is needs-improvement
     var overall = "good";
     if (lcpRating === "poor" || clsRating === "poor" || inpRating === "poor") {
       overall = "poor";
@@ -689,7 +683,7 @@
     if (document.visibilityState === "hidden") {
       flushActivity();
 
-      // Send final web vitals on page exit (most accurate timing)
+      // Send final web vitals on page exit
       if (config.trackVitals) {
         sendVitals();
       }
