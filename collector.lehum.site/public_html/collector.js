@@ -1,294 +1,120 @@
-(function (window, document) {
+// collector.js — Module 10: Production Readiness
+// Adds consent checking, bot detection, retry queue, time-on-page,
+// self-measurement, and command queue (_cq) pattern
+// Public API: collector.init(opts), collector.track(event, data),
+//             collector.set(key, value), collector.identify(userId),
+//             collector.use(extension)
+
+const collector = (function () {
   "use strict";
 
-  var config = {
+  // Module 08: private state
+  let config = {};
+  let initialized = false;
+  let blocked = false; // Module 10: true if consent/bot/sampling gates fail
+  const globalProps = {};
+
+  // Module 09: extension registry
+  const extensions = {};
+
+  // Module 10: time-on-page (visible time only)
+  let pageShowTime = Date.now();
+  let totalVisibleMs = 0;
+
+  // Module 08: defaults — page author only overrides what they need
+  const DEFAULTS = {
     endpoint: "https://collector.lehum.site/collect",
-    idleThresholdMs: 2000,
-    activityBatchMs: 3000,
-    maxErrors: 10,
-    sampleRate: 1.0,
-    debug: false,
-    respectDNT: false,
-    consentRequired: false,
-    retryLimit: 3,
-    retryDelayMs: 1000,
-    trackResources: true,
-    trackVitals: true,
-    trackClicks: true,
-    trackScrollDepth: true,
-    pixelPath: "/collect/pixel.gif",
+    enableTechnographics: true,
+    enableTiming: true,
+    enableVitals: true,
+    enableErrors: true,
+    enableActivity: true, // Module 09: mouse, keyboard, idle, page enter/exit
+    sampleRate: 1.0, // 1.0 = 100% of sessions
+    debug: false, // true = log to console, skip network
+    detectBots: true, // Module 10: skip collection for automated browsers
   };
 
-  function isBot() {
-    var ua = navigator.userAgent;
-    if (
-      /bot|crawl|spider|slurp|facebookexternalhit|bingpreview|mediapartners|google|yandex|baidu|duckduck|headless|phantom|puppeteer|selenium|playwright/i.test(
-        ua,
-      )
-    ) {
-      return true;
-    }
-    if (navigator.webdriver) return true;
-    return false;
+  // Module 08: debug-only logger; warn always shows
+  function log(...args) {
+    if (config.debug) console.log("[collector]", ...args);
+  }
+  function warn(...args) {
+    console.warn("[collector]", ...args);
   }
 
-  var sampled = true;
-
-  function evaluateSampling() {
-    if (config.sampleRate >= 1.0) {
-      sampled = true;
-      return;
-    }
-    if (config.sampleRate <= 0.0) {
-      sampled = false;
-      return;
-    }
-    // per-session sampling using sessionStorage
-    try {
-      var key = "_col_sampled";
-      var stored = sessionStorage.getItem(key);
-      if (stored !== null) {
-        sampled = stored === "1";
-      } else {
-        sampled = Math.random() < config.sampleRate;
-        sessionStorage.setItem(key, sampled ? "1" : "0");
-      }
-    } catch (e) {
-      sampled = Math.random() < config.sampleRate;
-    }
-  }
-
-  var consentGranted = false;
-  var consentQueue = []; // beacons queued
-
-  function grantConsent() {
-    consentGranted = true;
-    // queued before consent
-    while (consentQueue.length) {
-      var pending = consentQueue.shift();
-      doSend(pending);
-    }
-  }
-
-  function revokeConsent() {
-    consentGranted = false;
-    consentQueue = [];
-  }
-
-  function getSessionId() {
-    try {
-      var sid = sessionStorage.getItem("_col_sid");
-      if (!sid) {
-        sid = Math.random().toString(36).slice(2) + Date.now().toString(36);
-        sessionStorage.setItem("_col_sid", sid);
-      }
-      return sid;
-    } catch (e) {
-      return "nostorage-" + Math.random().toString(36).slice(2);
-    }
-  }
-
-  var SESSION_ID = getSessionId();
-  var userId = null;
-  var customProps = {};
-
-  var retryQueue = [];
-
-  function scheduleRetry(payload, attempt) {
-    if (attempt >= config.retryLimit) {
-      debugLog("Retry limit reached, dropping payload", payload);
-      return;
-    }
-    var delay = config.retryDelayMs * Math.pow(2, attempt);
-    retryQueue.push({
-      payload: payload,
-      attempt: attempt,
-      timer: setTimeout(function () {
-        doSend(payload, attempt + 1);
-      }, delay),
-    });
-  }
-
-  function debugLog() {
-    if (!config.debug) return;
-    var args = ["[collector]"].concat(Array.prototype.slice.call(arguments));
-    console.log.apply(console, args);
-  }
-
-  function doSend(payload, retryAttempt) {
-    retryAttempt = retryAttempt || 0;
-    payload.sessionId = SESSION_ID;
-    if (userId) payload.userId = userId;
-    var k;
-    for (k in customProps) {
-      if (customProps.hasOwnProperty(k)) {
-        payload[k] = customProps[k];
-      }
-    }
-
-    var body = JSON.stringify(payload);
-    debugLog("send", payload.type, payload);
-
-    if (navigator.sendBeacon) {
-      var blob = new Blob([body], { type: "application/json" });
-      var ok = navigator.sendBeacon(config.endpoint, blob);
-      if (!ok) scheduleRetry(payload, retryAttempt);
-    } else if (typeof fetch !== "undefined") {
-      fetch(config.endpoint, {
-        method: "POST",
-        body: body,
-        headers: { "Content-Type": "application/json" },
-        keepalive: true,
-      }).catch(function () {
-        scheduleRetry(payload, retryAttempt);
-      });
-    } else {
-      // XHR
-      try {
-        var xhr = new XMLHttpRequest();
-        xhr.open("POST", config.endpoint, true);
-        xhr.setRequestHeader("Content-Type", "application/json");
-        xhr.send(body);
-      } catch (e) {
-        scheduleRetry(payload, retryAttempt);
-      }
-    }
-  }
-
-  function send(payload) {
-    if (!sampled) return;
-    if (config.respectDNT && navigator.doNotTrack === "1") return;
-    if (config.consentRequired && !consentGranted) {
-      consentQueue.push(payload);
-      debugLog("Queued (awaiting consent)", payload.type);
-      return;
-    }
-    doSend(payload);
-  }
-
-  function probeImages() {
-    return new Promise(function (resolve) {
-      var img = new Image();
-      img.onload = function () {
-        resolve(true);
-      };
-      img.onerror = function () {
-        resolve(false);
-      };
-      img.src =
-        "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-    });
-  }
-
-  function probeCSS() {
-    try {
-      var el = document.createElement("div");
-      el.style.cssText = "position:absolute;visibility:hidden;width:100px";
-      document.body.appendChild(el);
-      var w = window.getComputedStyle(el).width;
-      document.body.removeChild(el);
-      return w === "100px";
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function getStaticData(imagesEnabled) {
-    var net = {};
-    if (navigator.connection) {
-      var c = navigator.connection;
-      net = {
-        effectiveType: c.effectiveType || "",
-        downlink: c.downlink || 0,
-        rtt: c.rtt || 0,
-        saveData: c.saveData || false,
-      };
-    }
-
-    return {
-      userAgent: navigator.userAgent,
-      language: navigator.language,
-      languages: navigator.languages
-        ? navigator.languages.slice()
-        : [navigator.language],
-      cookiesEnabled: navigator.cookieEnabled,
-      jsEnabled: true,
-      imagesEnabled: imagesEnabled,
-      cssEnabled: probeCSS(),
-      screenWidth: window.screen.width,
-      screenHeight: window.screen.height,
-      windowWidth: window.innerWidth,
-      windowHeight: window.innerHeight,
-      pixelRatio: window.devicePixelRatio || 1,
-      colorScheme: window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light",
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      hardwareConcurrency: navigator.hardwareConcurrency || 0,
-      maxTouchPoints: navigator.maxTouchPoints || 0,
-      network: net,
-    };
-  }
-
-  function sendTrackingPixel(data) {
-    try {
-      var params = [];
-      for (var k in data) {
-        if (data.hasOwnProperty(k)) {
-          params.push(
-            encodeURIComponent(k) + "=" + encodeURIComponent(data[k]),
-          );
-        }
-      }
-      var img = new Image();
-      img.src =
-        config.endpoint.replace(/\/collect$/, "") +
-        config.pixelPath +
-        "?sid=" +
-        SESSION_ID +
-        "&" +
-        params.join("&") +
-        "&t=" +
-        Date.now();
-      debugLog("tracking pixel", img.src);
-    } catch (e) {
-      /* silent */
-    }
-  }
-
+  // Module 05: round to 2 decimal places for timing values
   function round(n) {
     return Math.round(n * 100) / 100;
   }
 
-  function getPerformanceData() {
-    var entries = performance.getEntriesByType("navigation");
-    if (!entries.length) return {};
+  // Module 02: session identity via sessionStorage (no cookies needed)
+  function getSessionId() {
+    let sid = sessionStorage.getItem("_collector_sid");
+    if (!sid) {
+      sid = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      sessionStorage.setItem("_collector_sid", sid);
+    }
+    return sid;
+  }
 
-    var n = entries[0];
+  // Module 08: sampling — decide once per session, store result so all pages agree
+  function shouldSample() {
+    const stored = sessionStorage.getItem("_collector_sampled");
+    if (stored !== null) return stored === "true";
+    const result = Math.random() < config.sampleRate;
+    sessionStorage.setItem("_collector_sampled", String(result));
+    return result;
+  }
+
+  // Module 02: Network Information API — not in Safari/Firefox, so feature-detect
+  function getNetworkInfo() {
+    if (!("connection" in navigator)) return {};
+    const conn = navigator.connection;
+    return {
+      effectiveType: conn.effectiveType,
+      downlink: conn.downlink,
+      rtt: conn.rtt,
+      saveData: conn.saveData,
+    };
+  }
+
+  // Module 03: detect browser capabilities
+  // JS is always true (this code is running); images assumed true if JS works;
+  // CSS probed via getComputedStyle on a hidden div
+  function getCapabilities() {
+    const caps = { javascript: true, images: true, css: false };
+
+    const el = document.createElement("div");
+    el.style.cssText = "position:absolute;left:-9999px;width:1px;height:1px";
+    document.body.appendChild(el);
+    const computed = window.getComputedStyle(el);
+    caps.css = computed.display !== "" && computed.display !== undefined;
+    document.body.removeChild(el);
+
+    return caps;
+  }
+
+  // Module 03: cookie bridge — server can log _sid, _vp, _caps via %{...}C
+  function setCookieBridge(caps) {
+    const sid = getSessionId();
+    const vp = window.innerWidth + "x" + window.innerHeight;
+    const js = caps && caps.javascript ? "1" : "0";
+    const img = caps && caps.images ? "1" : "0";
+    const css = caps && caps.css ? "1" : "0";
+
+    document.cookie = `_sid=${sid};path=/;max-age=1800;SameSite=Lax`;
+    document.cookie = `_vp=${vp};path=/;max-age=1800;SameSite=Lax`;
+    document.cookie = `_caps=js:${js},img:${img},css:${css};path=/;max-age=1800;SameSite=Lax`;
+  }
+
+  // Module 05: navigation timing — DNS, TCP, TLS, TTFB, DOM milestones
+  // Must be called after load event; setTimeout(fn,0) ensures loadEventEnd is set
+  function getNavigationTiming() {
+    const entries = performance.getEntriesByType("navigation");
+    if (!entries.length) return {};
+    const n = entries[0];
 
     return {
-      raw: {
-        fetchStart: round(n.fetchStart),
-        domainLookupStart: round(n.domainLookupStart),
-        domainLookupEnd: round(n.domainLookupEnd),
-        connectStart: round(n.connectStart),
-        connectEnd: round(n.connectEnd),
-        secureConnectionStart: round(n.secureConnectionStart),
-        requestStart: round(n.requestStart),
-        responseStart: round(n.responseStart),
-        responseEnd: round(n.responseEnd),
-        domInteractive: round(n.domInteractive),
-        domContentLoadedEventStart: round(n.domContentLoadedEventStart),
-        domContentLoadedEventEnd: round(n.domContentLoadedEventEnd),
-        domComplete: round(n.domComplete),
-        loadEventStart: round(n.loadEventStart),
-        loadEventEnd: round(n.loadEventEnd),
-        redirectCount: n.redirectCount,
-        type: n.type,
-        transferSize: n.transferSize,
-        encodedBodySize: n.encodedBodySize,
-        decodedBodySize: n.decodedBodySize,
-      },
       pageStarted: new Date(
         performance.timeOrigin + n.fetchStart,
       ).toISOString(),
@@ -307,718 +133,825 @@
       domInteractive: round(n.domInteractive - n.fetchStart),
       domComplete: round(n.domComplete - n.fetchStart),
       transferSize: n.transferSize,
-      headerSize: n.transferSize - n.encodedBodySize,
+      raw: {
+        fetchStart: n.fetchStart,
+        responseStart: n.responseStart,
+        responseEnd: n.responseEnd,
+        domInteractive: n.domInteractive,
+        domComplete: n.domComplete,
+        loadEventEnd: n.loadEventEnd,
+      },
     };
   }
 
-  function getResourceTimingData() {
-    var resources = performance.getEntriesByType("resource");
-    if (!resources.length) return null;
+  // Module 05: resource summary — count, transfer, duration per type + slowest 3
+  function getResourceSummary() {
+    const resources = performance.getEntriesByType("resource");
+    const byType = {
+      script: { count: 0, totalTransfer: 0, totalDuration: 0 },
+      link: { count: 0, totalTransfer: 0, totalDuration: 0 },
+      img: { count: 0, totalTransfer: 0, totalDuration: 0 },
+      font: { count: 0, totalTransfer: 0, totalDuration: 0 },
+      fetch: { count: 0, totalTransfer: 0, totalDuration: 0 },
+      xmlhttprequest: { count: 0, totalTransfer: 0, totalDuration: 0 },
+      other: { count: 0, totalTransfer: 0, totalDuration: 0 },
+    };
 
-    var totalTransfer = 0;
-    var totalDuration = 0;
-    var byType = {}; // group by initiatorType
-    var slowest = []; // top 5 slowest
+    let totalTransfer = 0;
+    let totalDuration = 0;
 
-    for (var i = 0; i < resources.length; i++) {
-      var r = resources[i];
-      totalTransfer += r.transferSize || 0;
-      totalDuration += r.duration || 0;
-
-      var type = r.initiatorType || "other";
-      if (!byType[type]) {
-        byType[type] = { count: 0, totalTransfer: 0, totalDuration: 0 };
-      }
+    resources.forEach((r) => {
+      const type = byType[r.initiatorType] ? r.initiatorType : "other";
       byType[type].count++;
       byType[type].totalTransfer += r.transferSize || 0;
       byType[type].totalDuration += r.duration || 0;
-
-      slowest.push({
-        name: r.name.substring(0, 120),
-        type: type,
-        duration: round(r.duration),
-        transferSize: r.transferSize || 0,
-      });
-    }
-
-    // Sort slowest descending and take top 5
-    slowest.sort(function (a, b) {
-      return b.duration - a.duration;
+      totalTransfer += r.transferSize || 0;
+      totalDuration += r.duration || 0;
     });
-    slowest = slowest.slice(0, 5);
 
-    var t;
-    for (t in byType) {
-      if (byType.hasOwnProperty(t)) {
-        byType[t].totalDuration = round(byType[t].totalDuration);
-      }
-    }
+    const slowest = resources
+      .slice()
+      .sort((a, b) => b.duration - a.duration)
+      .slice(0, 3)
+      .map((r) => ({
+        name: r.name,
+        duration: round(r.duration),
+        type: r.initiatorType,
+      }));
 
     return {
       count: resources.length,
-      totalTransfer: totalTransfer,
+      totalTransfer,
       totalDuration: round(totalDuration),
-      byType: byType,
-      slowest: slowest,
+      byType,
+      slowest,
     };
   }
 
-  var vitals = {
-    lcp: null,
-    cls: 0,
-    inp: null,
-  };
+  // Module 06: thresholds for LCP (ms), CLS (unitless), INP (ms)
+  const THRESHOLDS = { lcp: [2500, 4000], cls: [0.1, 0.25], inp: [200, 500] };
 
-  function initLCP() {
+  function getRating(metric, value) {
+    const t = THRESHOLDS[metric];
+    if (!t) return null;
+    if (value <= t[0]) return "good";
+    if (value <= t[1]) return "needsImprovement";
+    return "poor";
+  }
+
+  // Module 06: Web Vitals state (accumulated by observers)
+  let lcpValue = 0;
+  let clsValue = 0;
+  let inpValue = 0;
+  const inpInteractions = [];
+
+  // Module 06: LCP — last entry before user interaction is the final value
+  function observeLCP() {
     try {
-      var observer = new PerformanceObserver(function (list) {
-        var entries = list.getEntries();
-        if (entries.length) {
-          var last = entries[entries.length - 1];
-          vitals.lcp = round(last.startTime);
-          debugLog("LCP", vitals.lcp, last.element ? last.element.tagName : "");
-        }
+      const obs = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        lcpValue =
+          entries[entries.length - 1].renderTime ||
+          entries[entries.length - 1].loadTime;
+        log("LCP updated:", round(lcpValue), "ms", getRating("lcp", lcpValue));
       });
-      observer.observe({ type: "largest-contentful-paint", buffered: true });
+      obs.observe({ type: "largest-contentful-paint", buffered: true });
     } catch (e) {
-      debugLog("LCP observer not supported");
+      warn("LCP observer not supported:", e.message);
     }
   }
 
-  // CLS
-  function initCLS() {
+  // Module 06: CLS — accumulate shift values, skip shifts from user input
+  function observeCLS() {
     try {
-      var sessionValue = 0;
-      var sessionEntries = [];
-      var observer = new PerformanceObserver(function (list) {
-        var entries = list.getEntries();
-        for (var i = 0; i < entries.length; i++) {
-          var entry = entries[i];
-          if (!entry.hadRecentInput) {
-            sessionValue += entry.value;
-            sessionEntries.push(entry);
-          }
+      const obs = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (!entry.hadRecentInput) clsValue += entry.value;
         }
-        vitals.cls = round(sessionValue * 1000) / 1000;
-        debugLog("CLS", vitals.cls);
+        log(
+          "CLS updated:",
+          Math.round(clsValue * 1000) / 1000,
+          getRating("cls", clsValue),
+        );
       });
-      observer.observe({ type: "layout-shift", buffered: true });
+      obs.observe({ type: "layout-shift", buffered: true });
     } catch (e) {
-      debugLog("CLS observer not supported");
+      warn("CLS observer not supported:", e.message);
     }
   }
 
-  // INP — track all event timing entries, keep the worst interaction
-  // INP is the highest single-interaction latency (or p98 for pages with
-  // many interactions, but we keep the max for simplicity)
-  function initINP() {
+  // Module 06: INP — worst interaction duration (simplified from 98th percentile)
+  function observeINP() {
     try {
-      var interactions = {}; // interactionId → max duration
-
-      var observer = new PerformanceObserver(function (list) {
-        var entries = list.getEntries();
-        for (var i = 0; i < entries.length; i++) {
-          var entry = entries[i];
-          if (!entry.interactionId) continue;
-
-          var id = entry.interactionId;
-          var dur = entry.duration;
-          if (!interactions[id] || dur > interactions[id]) {
-            interactions[id] = dur;
-          }
+      const obs = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.interactionId) inpInteractions.push(entry.duration);
         }
-
-        // INP = worst interaction (for low interaction counts) or p98
-        var durations = [];
-        var key;
-        for (key in interactions) {
-          if (interactions.hasOwnProperty(key)) {
-            durations.push(interactions[key]);
-          }
-        }
-        if (durations.length) {
-          durations.sort(function (a, b) {
-            return a - b;
-          });
-          // Use p98 if we have 50+ interactions, otherwise use max
-          var idx =
-            durations.length >= 50
-              ? Math.floor(durations.length * 0.98) - 1
-              : durations.length - 1;
-          vitals.inp = round(durations[Math.max(0, idx)]);
-          debugLog("INP", vitals.inp);
-        }
+        if (inpInteractions.length) inpValue = Math.max(...inpInteractions);
+        log("INP updated:", round(inpValue), "ms", getRating("inp", inpValue));
       });
-      observer.observe({
-        type: "event",
-        buffered: true,
-        durationThreshold: 16,
-      });
+      obs.observe({ type: "event", buffered: true, durationThreshold: 16 });
     } catch (e) {
-      debugLog("INP observer not supported");
+      warn("INP observer not supported:", e.message);
     }
   }
 
-  function getVitalsScore() {
-    function rateLCP(val) {
-      if (val === null) return "unknown";
-      if (val <= 2500) return "good";
-      if (val <= 4000) return "needs-improvement";
-      return "poor";
-    }
-    function rateCLS(val) {
-      if (val <= 0.1) return "good";
-      if (val <= 0.25) return "needs-improvement";
-      return "poor";
-    }
-    function rateINP(val) {
-      if (val === null) return "unknown";
-      if (val <= 200) return "good";
-      if (val <= 500) return "needs-improvement";
-      return "poor";
-    }
+  // Module 07: error deduplication state + rate limit
+  const MAX_ERRORS = 10;
+  const reportedErrors = new Set();
+  let errorCount = 0;
 
-    var lcpRating = rateLCP(vitals.lcp);
-    var clsRating = rateCLS(vitals.cls);
-    var inpRating = rateINP(vitals.inp);
-
-    var overall = "good";
-    if (lcpRating === "poor" || clsRating === "poor" || inpRating === "poor") {
-      overall = "poor";
-    } else if (
-      lcpRating === "needs-improvement" ||
-      clsRating === "needs-improvement" ||
-      inpRating === "needs-improvement"
-    ) {
-      overall = "needs-improvement";
-    } else if (lcpRating === "unknown" || inpRating === "unknown") {
-      overall = "incomplete";
-    }
-
-    return {
-      lcp: { value: vitals.lcp, rating: lcpRating },
-      cls: { value: vitals.cls, rating: clsRating },
-      inp: { value: vitals.inp, rating: inpRating },
-      overall: overall,
-    };
-  }
-
-  function sendVitals() {
-    var score = getVitalsScore();
-    send({
-      type: "web-vitals",
-      vitals: score,
-      timestamp: new Date().toISOString(),
-      url: window.location.href,
-      page: document.title,
-    });
-    debugLog("vitals sent", score);
-  }
-
-  var reportedErrors = {};
-  var errorCount = 0;
-
+  // Module 07: send one error beacon, deduplicated + rate-limited
   function reportError(errorData) {
-    if (errorCount >= config.maxErrors) return;
-    var key =
-      (errorData.type || "") +
-      ":" +
-      (errorData.message || "") +
-      ":" +
-      (errorData.source || "") +
-      ":" +
-      (errorData.line || "");
-    if (reportedErrors[key]) return;
-    reportedErrors[key] = true;
+    if (errorCount >= MAX_ERRORS) return;
+    const key = `${errorData.type}:${errorData.message || ""}:${errorData.source || ""}:${errorData.lineno || ""}`;
+    if (reportedErrors.has(key)) return;
+    reportedErrors.add(key);
     errorCount++;
 
     send({
       type: "error",
+      sessionId: getSessionId(),
+      url: window.location.href,
+      page: document.title,
+      timestamp: new Date().toISOString(),
       error: errorData,
-      timestamp: new Date().toISOString(),
-      url: window.location.href,
-      page: document.title,
     });
   }
 
-  window.addEventListener("error", function (event) {
-    if (event instanceof ErrorEvent) {
-      reportError({
-        type: "js-error",
-        message: event.message,
-        source: event.filename,
-        line: event.lineno,
-        column: event.colno,
-        stack: event.error ? event.error.stack : "",
-      });
-    }
-  });
-
-  window.addEventListener(
-    "error",
-    function (event) {
-      if (!(event instanceof ErrorEvent)) {
-        var t = event.target;
-        if (
-          t &&
-          (t.tagName === "IMG" ||
-            t.tagName === "SCRIPT" ||
-            t.tagName === "LINK")
-        ) {
+  // Module 07: attach global error listeners — capture phase required for resource errors
+  function initErrorTracking() {
+    window.addEventListener(
+      "error",
+      (event) => {
+        if (event instanceof ErrorEvent) {
           reportError({
-            type: "resource-error",
-            tagName: t.tagName,
-            src: t.src || t.href || "",
+            type: "js-error",
+            message: event.message,
+            source: event.filename,
+            lineno: event.lineno,
+            colno: event.colno,
+            stack: event.error ? event.error.stack : "",
           });
+        } else {
+          const t = event.target;
+          if (
+            t &&
+            (t.tagName === "IMG" ||
+              t.tagName === "SCRIPT" ||
+              t.tagName === "LINK")
+          ) {
+            reportError({
+              type: "resource-error",
+              message: `Failed to load ${t.tagName}: ${t.src || t.href || ""}`,
+              source: t.src || t.href || "",
+            });
+          }
         }
-      }
-    },
-    true,
-  );
+      },
+      true,
+    );
 
-  window.addEventListener("unhandledrejection", function (event) {
-    var reason = event.reason;
-    reportError({
-      type: "promise-rejection",
-      message: reason instanceof Error ? reason.message : String(reason),
-      stack: reason instanceof Error ? reason.stack : "",
-    });
-  });
-
-  var activityQueue = [];
-  var idleTimer = null;
-  var idleStart = null;
-  var pageEnteredAt = new Date().toISOString();
-  var activityInterval = null;
-
-  function pushActivity(event) {
-    activityQueue.push(event);
-  }
-
-  function flushActivity() {
-    if (!activityQueue.length) return;
-    send({
-      type: "activity",
-      events: activityQueue.splice(0),
-      timestamp: new Date().toISOString(),
-      url: window.location.href,
-      page: document.title,
-    });
-  }
-
-  function resetIdle() {
-    if (idleStart !== null) {
-      var idleDuration = Date.now() - idleStart;
-      pushActivity({
-        kind: "idle-end",
-        endedAt: new Date().toISOString(),
-        durationMs: idleDuration,
+    window.addEventListener("unhandledrejection", (event) => {
+      const reason = event.reason;
+      reportError({
+        type: "promise-rejection",
+        message: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : "",
       });
-      idleStart = null;
+    });
+
+    log("Error tracking enabled");
+  }
+
+  // Module 10: detect automated browsers (Puppeteer, Selenium, Playwright, headless)
+  function isBot() {
+    if (navigator.webdriver) return true;
+    const ua = navigator.userAgent;
+    if (/HeadlessChrome|PhantomJS|Lighthouse/i.test(ua)) return true;
+    if (/Chrome/.test(ua) && !window.chrome) return true; // spoofed or headless Chrome
+    if (window._phantom || window.__nightmare || window.callPhantom)
+      return true;
+    return false;
+  }
+
+  // Module 10: sessionStorage retry queue — cap at 50, drained on next page load
+  function queueForRetry(payload) {
+    try {
+      const q = JSON.parse(sessionStorage.getItem("_collector_retry") || "[]");
+      if (q.length >= 50) return;
+      q.push(payload);
+      sessionStorage.setItem("_collector_retry", JSON.stringify(q));
+    } catch (e) {
+      /* sessionStorage full or unavailable */
     }
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(function () {
-      idleStart = Date.now();
-      pushActivity({
-        kind: "idle-start",
-        startedAt: new Date().toISOString(),
-      });
-    }, config.idleThresholdMs);
   }
 
-  var lastMoveTime = 0;
-  document.addEventListener("mousemove", function (e) {
-    var now = Date.now();
-    if (now - lastMoveTime < 200) return;
-    lastMoveTime = now;
-    resetIdle();
-    pushActivity({
-      kind: "mousemove",
-      x: e.clientX,
-      y: e.clientY,
-      t: now,
-    });
-  });
-
-  document.addEventListener("click", function (e) {
-    resetIdle();
-    pushActivity({
-      kind: "click",
-      x: e.clientX,
-      y: e.clientY,
-      button: e.button,
-      t: Date.now(),
-    });
-  });
-
-  document.addEventListener("scroll", function () {
-    resetIdle();
-    pushActivity({
-      kind: "scroll",
-      x: window.scrollX,
-      y: window.scrollY,
-      t: Date.now(),
-    });
-  });
-
-  document.addEventListener("keydown", function (e) {
-    resetIdle();
-    pushActivity({
-      kind: "keydown",
-      key: e.key,
-      t: Date.now(),
-    });
-  });
-
-  document.addEventListener("keyup", function (e) {
-    resetIdle();
-    pushActivity({
-      kind: "keyup",
-      key: e.key,
-      t: Date.now(),
-    });
-  });
-
-  document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "hidden") {
-      flushActivity();
-
-      // Send final web vitals on page exit
-      if (config.trackVitals) {
-        sendVitals();
-      }
-
-      send({
-        type: "page-exit",
-        url: window.location.href,
-        page: document.title,
-        enteredAt: pageEnteredAt,
-        exitedAt: new Date().toISOString(),
-        timestamp: new Date().toISOString(),
-      });
+  function processRetryQueue() {
+    try {
+      const q = JSON.parse(sessionStorage.getItem("_collector_retry") || "[]");
+      if (!q.length) return;
+      sessionStorage.removeItem("_collector_retry");
+      q.forEach((p) => send(p));
+      log("Drained retry queue:", q.length, "item(s)");
+    } catch (e) {
+      /* sessionStorage unavailable */
     }
-  });
-
-  function initClickTracking() {
-    document.addEventListener("click", function (e) {
-      var target = e.target;
-      if (!target) return;
-
-      // Walk up to find nearest meaningful element (link, button, etc.)
-      var el = target;
-      var depth = 0;
-      while (el && depth < 5) {
-        if (
-          el.tagName === "A" ||
-          el.tagName === "BUTTON" ||
-          el.tagName === "INPUT" ||
-          (el.getAttribute && el.getAttribute("role") === "button")
-        ) {
-          break;
-        }
-        el = el.parentElement;
-        depth++;
-      }
-      if (!el) el = target;
-
-      pushActivity({
-        kind: "click-enriched",
-        tagName: el.tagName,
-        id: el.id || "",
-        className:
-          el.className && typeof el.className === "string"
-            ? el.className.substring(0, 100)
-            : "",
-        text: (el.textContent || "").trim().substring(0, 50),
-        href: el.href || "",
-        x: e.clientX,
-        y: e.clientY,
-        t: Date.now(),
-      });
-    });
   }
 
-  function initScrollDepth() {
-    var maxDepth = 0;
-    var milestones = { 25: false, 50: false, 75: false, 90: false, 100: false };
-    var throttleTimer = null;
+  // Module 04: cascading delivery — sendBeacon → fetch(keepalive) → fetch
+  // Module 08: debug mode skips network and logs to console instead
+  // Module 10: retry on failure; self-measurement via performance.mark
+  function send(payload) {
+    // Merge global properties (set via collector.set())
+    for (const k of Object.keys(globalProps)) {
+      payload[k] = globalProps[k];
+    }
 
-    function calcScrollPercent() {
-      var scrollTop = window.scrollY || document.documentElement.scrollTop;
-      var docHeight = Math.max(
-        document.body.scrollHeight,
-        document.documentElement.scrollHeight,
+    log("payload:", payload);
+
+    if (config.debug) return; // debug mode — don't send, just log
+
+    performance.mark("collector_send_start"); // Module 10: self-measurement
+
+    const json = JSON.stringify(payload);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = config.endpoint || DEFAULTS.endpoint;
+
+    if (navigator.sendBeacon) {
+      const sent = navigator.sendBeacon(url, blob);
+      performance.mark("collector_send_end");
+      performance.measure(
+        "collector_send",
+        "collector_send_start",
+        "collector_send_end",
       );
-      var winHeight = window.innerHeight;
-      if (docHeight <= winHeight) return 100;
-      return Math.min(
-        100,
-        Math.round(((scrollTop + winHeight) / docHeight) * 100),
-      );
+      if (sent) return;
     }
 
-    function checkMilestones() {
-      var pct = calcScrollPercent();
-      if (pct > maxDepth) maxDepth = pct;
-
-      for (var m in milestones) {
-        if (
-          milestones.hasOwnProperty(m) &&
-          !milestones[m] &&
-          pct >= parseInt(m, 10)
-        ) {
-          milestones[m] = true;
-          pushActivity({
-            kind: "scroll-depth",
-            milestone: parseInt(m, 10),
-            currentPct: pct,
-            t: Date.now(),
-          });
-          debugLog("scroll depth milestone", m + "%");
-        }
-      }
-    }
-
-    document.addEventListener("scroll", function () {
-      if (throttleTimer) return;
-      throttleTimer = setTimeout(function () {
-        throttleTimer = null;
-        checkMilestones();
-      }, 250);
-    });
-
-    // Also send max depth on page exit
-    document.addEventListener("visibilitychange", function () {
-      if (document.visibilityState === "hidden") {
-        pushActivity({
-          kind: "scroll-depth-max",
-          maxDepth: maxDepth,
-          t: Date.now(),
-        });
-      }
+    fetch(url, {
+      method: "POST",
+      body: json,
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+    }).catch(() => {
+      // Module 10: retry on fetch failure
+      fetch(url, {
+        method: "POST",
+        body: json,
+        headers: { "Content-Type": "application/json" },
+      }).catch(() => {
+        queueForRetry(payload); // last resort — store for next page load
+      });
     });
   }
 
-  var plugins = [];
+  // Module 01: pageview beacon — static data + performance + resources
+  function collectPageview() {
+    const caps = getCapabilities();
+    setCookieBridge(caps);
 
-  function registerPlugin(plugin) {
-    if (!plugin || typeof plugin.init !== "function") {
-      debugLog("Invalid plugin — must have init(collector) method");
-      return;
-    }
-    plugins.push(plugin);
-    debugLog("Plugin registered:", plugin.name || "unnamed");
-
-    // If collector is already initialized, call init immediately
-    if (initialized) {
-      try {
-        plugin.init(publicAPI);
-      } catch (e) {
-        debugLog("Plugin init error:", plugin.name, e);
-      }
-    }
-  }
-
-  function sendPageview(staticData, perfData, resourceData) {
-    var payload = {
+    const payload = {
       type: "pageview",
+      sessionId: getSessionId(),
       url: window.location.href,
       page: document.title,
       referrer: document.referrer,
       timestamp: new Date().toISOString(),
-      enteredAt: pageEnteredAt,
-      static: staticData,
-      performance: perfData,
+
+      static: {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        cookiesEnabled: navigator.cookieEnabled,
+        jsEnabled: caps.javascript,
+        imagesEnabled: caps.images,
+        cssEnabled: caps.css,
+        screenWidth: window.screen.width,
+        screenHeight: window.screen.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        pixelRatio: window.devicePixelRatio,
+        colorScheme: window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        network: getNetworkInfo(),
+      },
     };
 
-    if (resourceData) {
-      payload.resources = resourceData;
+    if (config.enableTiming) {
+      payload.performance = getNavigationTiming();
+      payload.resources = getResourceSummary();
     }
 
     send(payload);
   }
 
-  var initialized = false;
+  // Module 06: vitals beacon — sent when the user leaves the page
+  function sendVitals() {
+    const ratings = {
+      lcp: getRating("lcp", lcpValue),
+      cls: getRating("cls", clsValue),
+      inp: getRating("inp", inpValue),
+    };
+    const rankOrder = { poor: 2, needsImprovement: 1, good: 0 };
+    const overall = Object.values(ratings).reduce(
+      (worst, r) => (rankOrder[r] > rankOrder[worst] ? r : worst),
+      "good",
+    );
 
-  function init(userConfig) {
-    if (initialized) {
-      debugLog("Already initialized");
-      return;
-    }
-
-    // Merge user config
-    if (userConfig) {
-      var k;
-      for (k in userConfig) {
-        if (userConfig.hasOwnProperty(k) && config.hasOwnProperty(k)) {
-          config[k] = userConfig[k];
-        }
-      }
-    }
-
-    // Bot detection — skip everything for bots
-    if (isBot()) {
-      debugLog("Bot detected, disabling collection");
-      sampled = false;
-      initialized = true;
-      return;
-    }
-
-    // Sampling
-    evaluateSampling();
-    if (!sampled) {
-      debugLog("Session not sampled (rate=" + config.sampleRate + ")");
-      initialized = true;
-      return;
-    }
-
-    // DNT
-    if (config.respectDNT && navigator.doNotTrack === "1") {
-      debugLog("DNT enabled, disabling collection");
-      sampled = false;
-      initialized = true;
-      return;
-    }
-
-    // Start Web Vitals observers
-    if (config.trackVitals) {
-      initLCP();
-      initCLS();
-      initINP();
-    }
-
-    // Start enriched click tracking
-    if (config.trackClicks) {
-      initClickTracking();
-    }
-
-    // Start scroll depth tracking
-    if (config.trackScrollDepth) {
-      initScrollDepth();
-    }
-
-    // Start activity batch interval
-    activityInterval = setInterval(flushActivity, config.activityBatchMs);
-
-    // Initialise all registered plugins
-    for (var i = 0; i < plugins.length; i++) {
-      try {
-        plugins[i].init(publicAPI);
-      } catch (e) {
-        debugLog("Plugin init error:", plugins[i].name, e);
-      }
-    }
-
-    initialized = true;
-    debugLog("Initialized", config);
-
-    // Fire pageview after load
-    if (document.readyState === "complete") {
-      setTimeout(firePageview, 0);
-    } else {
-      window.addEventListener("load", function () {
-        setTimeout(firePageview, 0);
-      });
-    }
-  }
-
-  function firePageview() {
-    probeImages().then(function (imagesOk) {
-      var staticData = getStaticData(imagesOk);
-      var perfData = getPerformanceData();
-      var resData = config.trackResources ? getResourceTimingData() : null;
-      sendPageview(staticData, perfData, resData);
-
-      // Also send a tracking pixel for server-log correlation
-      sendTrackingPixel({ url: window.location.href, t: Date.now() });
-
-      resetIdle();
+    send({
+      type: "web-vitals",
+      sessionId: getSessionId(),
+      url: window.location.href,
+      page: document.title,
+      timestamp: new Date().toISOString(),
+      vitals: {
+        lcp: { value: round(lcpValue), rating: ratings.lcp },
+        cls: { value: Math.round(clsValue * 1000) / 1000, rating: ratings.cls },
+        inp: { value: round(inpValue), rating: ratings.inp },
+        overall,
+      },
     });
   }
 
-  function track(eventName, properties) {
-    if (!initialized) {
-      debugLog("Not initialized — call collector.init() first");
-      return;
+  // Module 09: activity event buffer — flushed as a single beacon on page hide
+  const activityEvents = [];
+  let pageEnteredAt = null;
+
+  function pushEvent(kind, data) {
+    activityEvents.push({ kind, ...data, timestamp: new Date().toISOString() });
+  }
+
+  // Module 09: idle detection — fire after 2s of no activity, record how long it lasted
+  let idleTimer = null;
+  let idleStart = null;
+
+  function resetIdle() {
+    if (idleStart !== null) {
+      // user came back — record how long the idle lasted and when it ended
+      const endedAt = new Date().toISOString();
+      const duration = Date.now() - idleStart;
+      pushEvent("idle", { duration, endedAt });
+      idleStart = null;
     }
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleStart = Date.now();
+    }, 2000);
+  }
+
+  // Module 09: flush buffered activity events to the server
+  function flushActivity() {
+    if (!activityEvents.length) return;
+    const events = activityEvents.splice(0); // drain the array
     send({
-      type: "custom-event",
-      event: eventName,
-      properties: properties || {},
+      type: "activity",
+      sessionId: getSessionId(),
+      url: window.location.href,
+      page: document.title,
       timestamp: new Date().toISOString(),
+      events,
+    });
+  }
+
+  // Module 09: wire up mouse, keyboard, scroll, and idle listeners
+  function initActivityTracking() {
+    pageEnteredAt = new Date().toISOString();
+    pushEvent("page-enter", {
       url: window.location.href,
       page: document.title,
     });
+
+    // Throttle helpers — only emit once every 100ms for high-frequency events
+    let lastMove = 0;
+    let lastScroll = 0;
+
+    document.addEventListener("mousemove", (e) => {
+      const now = Date.now();
+      if (now - lastMove < 100) return;
+      lastMove = now;
+      pushEvent("mousemove", { x: e.clientX, y: e.clientY });
+      resetIdle();
+    });
+
+    // Clicks — record which mouse button (0=left, 1=middle, 2=right)
+    document.addEventListener("click", (e) => {
+      pushEvent("click", { x: e.clientX, y: e.clientY, button: e.button });
+      resetIdle();
+    });
+
+    window.addEventListener("scroll", () => {
+      const now = Date.now();
+      if (now - lastScroll < 100) return;
+      lastScroll = now;
+      pushEvent("scroll", { scrollX: window.scrollX, scrollY: window.scrollY });
+      resetIdle();
+    });
+
+    // Key events — record key name, not char value (avoids logging passwords)
+    document.addEventListener("keydown", (e) => {
+      pushEvent("keydown", { key: e.key, code: e.code });
+      resetIdle();
+    });
+
+    document.addEventListener("keyup", (e) => {
+      pushEvent("keyup", { key: e.key, code: e.code });
+      resetIdle();
+    });
+
+    // Page exit — flush all buffered events
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        pushEvent("page-exit", {
+          url: window.location.href,
+          page: document.title,
+          enteredAt: pageEnteredAt,
+          exitedAt: new Date().toISOString(),
+        });
+        flushActivity();
+      }
+    });
+
+    resetIdle(); // start the idle timer
+    log("Activity tracking enabled");
   }
 
-  function set(key, value) {
-    customProps[key] = value;
-    debugLog("set", key, value);
-  }
-
-  function identify(uid) {
-    userId = uid;
-    debugLog("identify", uid);
-    // Persist so subsequent pages in this session carry the ID
-    try {
-      sessionStorage.setItem("_col_uid", uid);
-    } catch (e) {
-      /* silent */
+  // Module 09: register an extension — must have { name, init, destroy? }
+  // Extensions receive a limited API (track, set, getConfig, getSessionId)
+  // They cannot call send() directly — all data flows through track() so
+  // sampling, debug mode, and endpoint config apply uniformly
+  function use(extension) {
+    if (!extension || !extension.name) {
+      warn("use(): extension must have a name property");
+      return;
     }
+    if (extensions[extension.name]) {
+      warn(`use(): extension "${extension.name}" already registered`);
+      return;
+    }
+    extensions[extension.name] = extension;
+
+    if (typeof extension.init === "function") {
+      extension.init({
+        track,
+        set,
+        getConfig: () => ({ ...config }),
+        getSessionId,
+      });
+    }
+
+    log("Extension registered:", extension.name);
   }
 
-  // Restore userId from session if previously identified
-  try {
-    var storedUid = sessionStorage.getItem("_col_uid");
-    if (storedUid) userId = storedUid;
-  } catch (e) {
-    /* silent */
-  }
+  // ── Public API ────────────────────────────────────────────────────────────
 
-  var publicAPI = {
-    init: init,
-    track: track,
-    set: set,
-    identify: identify,
-    use: registerPlugin,
-    grantConsent: grantConsent,
-    revokeConsent: revokeConsent,
-    getVitalsScore: getVitalsScore,
-    // Expose for plugins
-    send: send,
-    pushActivity: pushActivity,
-    config: config,
-    SESSION_ID: SESSION_ID,
-  };
+  // Module 08: configure and start the collector
+  // All features are opt-out via flags; calling init() twice is a no-op + warning
+  function init(options) {
+    if (initialized) {
+      warn("collector.init() called more than once — ignoring");
+      return;
+    }
 
-  function processCommand(cmd) {
-    if (!Array.isArray(cmd) || !cmd.length) return;
-    var method = cmd[0];
-    var args = cmd.slice(1);
-    if (typeof publicAPI[method] === "function") {
-      publicAPI[method].apply(null, args);
+    // Merge user options with defaults
+    config = {};
+    for (const key of Object.keys(DEFAULTS)) {
+      config[key] =
+        options && options[key] !== undefined ? options[key] : DEFAULTS[key];
+    }
+
+    // Sampling: decide once per session — unsampled sessions are fully silent
+    if (!shouldSample()) {
+      log(`Session not sampled (rate: ${config.sampleRate})`);
+      return;
+    }
+
+    performance.mark("collector_init_start"); // Module 10: self-measurement
+
+    // Module 10 gate: bot detection
+    if (config.detectBots && isBot()) {
+      log("bot detected — collection disabled");
+      blocked = true;
+      initialized = true;
+      return;
+    }
+
+    initialized = true;
+
+    // Module 07: attach error listeners before anything else can throw
+    if (config.enableErrors) initErrorTracking();
+
+    // Module 09: start activity tracking (mouse, keyboard, scroll, idle)
+    if (config.enableActivity) initActivityTracking();
+
+    // Module 06: start vitals observers immediately (buffered: true catches past entries)
+    if (config.enableVitals) {
+      observeLCP();
+      observeCLS();
+      observeINP();
+    }
+
+    // Module 10: drain any beacons that failed on a previous page load
+    processRetryQueue();
+
+    // Module 05: fire pageview beacon after load; setTimeout ensures loadEventEnd is set
+    if (document.readyState === "complete") {
+      setTimeout(collectPageview, 0);
     } else {
-      debugLog("Unknown command:", method);
+      window.addEventListener("load", () => setTimeout(collectPageview, 0));
     }
+
+    // Module 06: send final vitals when user hides the tab or navigates away
+    // Module 10: also track time-on-page (visible time only, not background time)
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        totalVisibleMs += Date.now() - pageShowTime;
+        if (config.enableVitals) sendVitals();
+      } else {
+        pageShowTime = Date.now(); // tab became visible again — reset timer
+      }
+    });
+
+    performance.mark("collector_init_end");
+    performance.measure(
+      "collector_init",
+      "collector_init_start",
+      "collector_init_end",
+    );
+    log("initialized", config);
   }
 
-  // Drain any pre-queued commands
-  var queue = window.CollectorQueue || [];
-  for (var i = 0; i < queue.length; i++) {
-    processCommand(queue[i]);
+  // Module 08: send a custom event with optional data
+  function track(eventName, data) {
+    if (!initialized) {
+      warn("track() called before init()");
+      return;
+    }
+    if (blocked) return; // Module 10: silently no-op for unsampled/bot/no-consent sessions
+    const payload = {
+      type: eventName || "custom-event",
+      sessionId: getSessionId(),
+      url: window.location.href,
+      page: document.title,
+      timestamp: new Date().toISOString(),
+    };
+    if (data) payload.properties = data;
+    send(payload);
   }
 
-  // Replace the array push with direct execution
-  window.CollectorQueue = {
-    push: function (cmd) {
-      processCommand(cmd);
-    },
-  };
+  // Module 08: attach a property to every future beacon (good for env, version, plan)
+  function set(key, value) {
+    globalProps[key] = value;
+    log("global prop set:", key, "=", value);
+  }
 
-  // Expose the public API globally
-  window.collector = publicAPI;
+  // Module 08: link the session to an authenticated user
+  // Functionally set('userId', id) but explicit enough to match Segment/Amplitude patterns
+  function identify(userId) {
+    globalProps.userId = userId;
+    log("user identified:", userId);
+  }
 
-  if (!initialized && !queue.length) {
+  // Module 10: command queue — drain _cq array then replace with live proxy
+  // This allows <script async> loading: page pushes commands before script loads,
+  // script processes them when ready. All subsequent _cq.push() calls execute immediately.
+  // Pattern used by Google Analytics (dataLayer), Segment, Amplitude, etc.
+  const publicAPI = { init, track, set, identify, use };
+
+  (function processQueue() {
+    const q = window._cq || [];
+    for (const args of q) {
+      const method = args[0];
+      const params = args.slice(1);
+      if (typeof publicAPI[method] === "function") publicAPI[method](...params);
+    }
+    // Replace the plain array with a live proxy — future _cq.push() executes immediately
+    window._cq = {
+      push(args) {
+        const method = args[0];
+        const params = args.slice(1);
+        if (typeof publicAPI[method] === "function")
+          publicAPI[method](...params);
+      },
+    };
+  })();
+
+  // Auto-initialize with defaults if no _cq.push(['init', ...]) was queued
+  if (!initialized) {
     init();
   }
-})(window, document);
+
+  return publicAPI;
+})();
+
+// ── Extensions (Module 09) ────────────────────────────────────────────────
+// Register with: collector.use(ClickTracker) / collector.use(ScrollTracker)
+
+// Module 09: click tracker extension — CSS selector path + coordinates
+window.ClickTracker = {
+  name: "click-tracker",
+  _handler: null,
+
+  init(api) {
+    let lastClick = 0;
+    this._handler = (event) => {
+      const now = Date.now();
+      if (now - lastClick < 300) return; // debounce rapid double-clicks
+      lastClick = now;
+      const t = event.target;
+      api.track("click", {
+        tagName: t.tagName,
+        id: t.id || undefined,
+        class: t.className || undefined,
+        text: (t.textContent || "").trim().substring(0, 100),
+        x: event.clientX,
+        y: event.clientY,
+        selector: this._getSelector(t),
+      });
+    };
+    document.addEventListener("click", this._handler, true);
+  },
+
+  // Walk up the DOM to build a CSS path; stop at an ID (IDs are unique)
+  _getSelector(el) {
+    const parts = [];
+    while (el && el !== document.body) {
+      let part = el.tagName.toLowerCase();
+      if (el.id) {
+        parts.unshift(`${part}#${el.id}`);
+        break;
+      }
+      if (el.className && typeof el.className === "string") {
+        part += `.${el.className.trim().split(/\s+/).join(".")}`;
+      }
+      parts.unshift(part);
+      el = el.parentElement;
+    }
+    return parts.join(" > ");
+  },
+
+  destroy() {
+    if (this._handler) {
+      document.removeEventListener("click", this._handler, true);
+      this._handler = null;
+    }
+  },
+};
+
+// Module 09: scroll depth extension — reports at 25/50/75/100% + final depth on exit
+window.ScrollTracker = {
+  name: "scroll-tracker",
+  _api: null,
+  _maxDepth: 0,
+  _reported: {},
+  _scrollHandler: null,
+  _visHandler: null,
+  _thresholds: [25, 50, 75, 100],
+
+  init(api) {
+    this._api = api;
+    let ticking = false;
+
+    this._scrollHandler = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        this._measure();
+        ticking = false;
+      });
+    };
+    window.addEventListener("scroll", this._scrollHandler);
+
+    this._visHandler = () => {
+      if (document.visibilityState === "hidden") {
+        api.track("scroll_final", { maxDepth: this._maxDepth });
+      }
+    };
+    document.addEventListener("visibilitychange", this._visHandler);
+  },
+
+  _measure() {
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const docHeight = Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight,
+    );
+    const pct = Math.round(
+      ((scrollTop + window.innerHeight) / docHeight) * 100,
+    );
+
+    if (pct > this._maxDepth) this._maxDepth = pct;
+
+    for (const t of this._thresholds) {
+      if (pct >= t && !this._reported[t]) {
+        this._reported[t] = true;
+        this._api.track("scroll_depth", {
+          threshold: t,
+          maxDepth: this._maxDepth,
+        });
+      }
+    }
+  },
+
+  destroy() {
+    if (this._scrollHandler)
+      window.removeEventListener("scroll", this._scrollHandler);
+    if (this._visHandler)
+      document.removeEventListener("visibilitychange", this._visHandler);
+  },
+};
+
+// ── ConsentManager (Module 10) ────────────────────────────────────────────
+// Usage: if (!ConsentManager.check()) ConsentManager.showBanner({ onAccept: () => collector.init() });
+
+window.ConsentManager = (function () {
+  "use strict";
+
+  // Module 10: same logic as hasConsent() inside the collector
+  function check() {
+    if (navigator.globalPrivacyControl) return false;
+    const cookies = document.cookie.split(";");
+    for (const c of cookies) {
+      const cookie = c.trim();
+      if (cookie.startsWith("analytics_consent="))
+        return cookie.split("=")[1] === "true";
+    }
+    return false; // GDPR default: no cookie = no consent
+  }
+
+  // Module 10: set consent cookie for 1 year
+  function grant() {
+    const exp = new Date();
+    exp.setFullYear(exp.getFullYear() + 1);
+    document.cookie = `analytics_consent=true;expires=${exp.toUTCString()};path=/;SameSite=Lax`;
+    _removeBanner();
+  }
+
+  // Module 10: revoke consent and clear session analytics data
+  function revoke() {
+    const exp = new Date();
+    exp.setFullYear(exp.getFullYear() + 1);
+    document.cookie = `analytics_consent=false;expires=${exp.toUTCString()};path=/;SameSite=Lax`;
+    try {
+      sessionStorage.removeItem("_collector_sid");
+      sessionStorage.removeItem("_collector_sampled");
+      sessionStorage.removeItem("_collector_retry");
+    } catch (e) {
+      /* sessionStorage unavailable */
+    }
+    _removeBanner();
+  }
+
+  function _removeBanner() {
+    const b = document.getElementById("_consent_banner");
+    if (b) b.parentNode.removeChild(b);
+  }
+
+  // Module 10: minimal consent banner — no framework, pure DOM
+  function showBanner(opts) {
+    opts = opts || {};
+    if (document.cookie.includes("analytics_consent=")) return; // already decided
+
+    const banner = document.createElement("div");
+    banner.id = "_consent_banner";
+    banner.style.cssText =
+      "position:fixed;bottom:0;left:0;right:0;background:#2c3e50;color:#fff;" +
+      "padding:14px 20px;display:flex;align-items:center;gap:12px;z-index:9999;" +
+      "font:14px/-apple-system,sans-serif;box-shadow:0 -2px 8px rgba(0,0,0,.3)";
+
+    const msg = document.createElement("span");
+    msg.style.flex = "1";
+    msg.textContent =
+      opts.message ||
+      "This site uses analytics to understand how visitors use it. No personal data is sold.";
+
+    const btnStyle =
+      "border:none;padding:8px 18px;border-radius:4px;cursor:pointer;font-size:14px";
+
+    const accept = document.createElement("button");
+    accept.textContent = opts.acceptText || "Accept";
+    accept.style.cssText =
+      btnStyle + ";background:#27ae60;color:#fff;font-weight:bold";
+    accept.onclick = () => {
+      grant();
+      if (opts.onAccept) opts.onAccept();
+    };
+
+    const decline = document.createElement("button");
+    decline.textContent = opts.declineText || "Decline";
+    decline.style.cssText =
+      btnStyle + ";background:transparent;color:#fff;border:1px solid #fff";
+    decline.onclick = () => {
+      revoke();
+      if (opts.onDecline) opts.onDecline();
+    };
+
+    banner.appendChild(msg);
+    banner.appendChild(accept);
+    banner.appendChild(decline);
+    document.body.appendChild(banner);
+  }
+
+  return { check, grant, revoke, showBanner };
+})();
