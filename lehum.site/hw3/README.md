@@ -19,14 +19,10 @@
 - **SSH/Server Access**: Same credentials as above.
 
 ## Changes Beyond the CSE 135 Tutorial
-- Added runtime probing for image support (inline 1×1 GIF test) and CSS support (computed style check on a hidden element)
-- Included additional static fields: `pixelRatio`, `colorScheme`, `timezone`, `hardwareConcurrency`, `maxTouchPoints`, `languages`
-- Extended performance data with computed milestones: TTFB, DNS, TCP, TLS, download, DOM interactive, DOM complete, header size
-- Added error deduplication (keyed on type+message+source+line) with a configurable cap per session
-- Captured resource load failures (IMG, SCRIPT, LINK tags) and unhandled promise rejections
+- Instead of using technographics, our collect endpoint accepts a user agent directly
+- Our collector has an `initActivityTracking()` function that tracks activity such as mouse movement, keyboard, and scrolling without external extensions — we chose to keep these trackers in the main collector file rather than using a plugin system
+- We added an idle tracker that fires after 2 seconds of inactivity
+- Our collector also auto initializes — no manual `init()` call needed
+- Added page lifecycle tracking via `visibilitychange` with enter/exit timestamps
 - Throttled mousemove events to max 5 per second to reduce payload size
 - Used `sessionStorage`-based session ID (no cookies) for session correlation
-- XHR last-resort fallback when both `sendBeacon` and `fetch` are unavailable
-- Keyboard event tracking (keydown/keyup)
-- Page lifecycle tracking via `visibilitychange` with enter/exit timestamps
-- Idle detection with configurable threshold
