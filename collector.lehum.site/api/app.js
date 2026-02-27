@@ -276,6 +276,20 @@ app.post('/collect', async (req, res) => {
   }
 });
 
+// ─── Tracking pixel ───────────────────────────────────────────────────────────
+
+const PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+app.get('/collect/pixel.gif', (req, res) => {
+  res.set({
+    'Content-Type':  'image/gif',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma':        'no-cache',
+    'Expires':       '0',
+  });
+  res.end(PIXEL);
+});
+
 // ─── Health check ─────────────────────────────────────────────────────────────
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));

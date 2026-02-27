@@ -41,6 +41,18 @@ const collector = (function () {
   // Module 05: round to 2 decimal places for timing values
   function round(n) { return Math.round(n * 100) / 100; }
 
+  // Module 03: fire a GET request the server responds to with a 1x1 GIF
+  // Apache logs the hit including _sid/_vp/_caps cookies from setCookieBridge()
+  function sendTrackingPixel() {
+    try {
+      const sid    = getSessionId();
+      const params = `sid=${encodeURIComponent(sid)}&url=${encodeURIComponent(window.location.href)}&t=${Date.now()}`;
+      const img    = new Image();
+      img.src      = `${config.endpoint.replace(/\/collect$/, '')}/collect/pixel.gif?${params}`;
+      log('tracking pixel fired:', img.src);
+    } catch (e) { /* silent */ }
+  }
+
   // Module 02: session identity via sessionStorage (no cookies needed)
   function getSessionId() {
     let sid = sessionStorage.getItem('_collector_sid');
@@ -398,6 +410,7 @@ const collector = (function () {
     }
 
     send(payload);
+    sendTrackingPixel(); // Module 03: also log the hit server-side via Apache
   }
 
   // Module 06: vitals beacon — sent when the user leaves the page
