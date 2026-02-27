@@ -1,6 +1,3 @@
-// collector.js — Module 10: Production Readiness
-// Adds consent checking, bot detection, retry queue, time-on-page,
-// self-measurement, and command queue (_cq) pattern
 // Public API: collector.init(opts), collector.track(event, data),
 //             collector.set(key, value), collector.identify(userId),
 //             collector.use(extension)
@@ -8,20 +5,20 @@
 const collector = (function () {
   "use strict";
 
-  // Module 08: private state
+  // private state
   let config = {};
   let initialized = false;
-  let blocked = false; // Module 10: true if consent/bot/sampling gates fail
+  let blocked = false;
   const globalProps = {};
 
-  // Module 09: extension registry
+  // extension registry
   const extensions = {};
 
-  // Module 10: time-on-page (visible time only)
+  // time-on-page (visible time only)
   let pageShowTime = Date.now();
   let totalVisibleMs = 0;
 
-  // Module 08: defaults — page author only overrides what they need
+  // defaults, page author only overrides what they need
   const DEFAULTS = {
     endpoint: "https://collector.lehum.site/collect",
     enableTechnographics: true,
@@ -29,12 +26,12 @@ const collector = (function () {
     enableVitals: true,
     enableErrors: true,
     enableActivity: true, // Module 09: mouse, keyboard, idle, page enter/exit
-    sampleRate: 1.0, // 1.0 = 100% of sessions
-    debug: false, // true = log to console, skip network
-    detectBots: true, // Module 10: skip collection for automated browsers
+    sampleRate: 1.0, // 100% of sessions
+    debug: false, // log to console, skip network
+    detectBots: true, // Module 10: skip for automated browsers
   };
 
-  // Module 08: debug-only logger; warn always shows
+  // debug-only logger
   function log(...args) {
     if (config.debug) console.log("[collector]", ...args);
   }
@@ -42,13 +39,12 @@ const collector = (function () {
     console.warn("[collector]", ...args);
   }
 
-  // Module 05: round to 2 decimal places for timing values
+  // 2 decimal places for timing values
   function round(n) {
     return Math.round(n * 100) / 100;
   }
 
-  // Module 03: fire a GET request the server responds to with a 1x1 GIF test
-  // Apache logs the hit including _sid/_vp/_caps cookies from setCookieBridge()
+  // GET request the server responds to with a 1x1 GIF test
   function sendTrackingPixel() {
     try {
       const sid = getSessionId();
@@ -61,7 +57,7 @@ const collector = (function () {
     }
   }
 
-  // Module 02: session identity via sessionStorage (no cookies needed)
+  // session identity with sessionStorage
   function getSessionId() {
     let sid = sessionStorage.getItem("_collector_sid");
     if (!sid) {
@@ -71,7 +67,7 @@ const collector = (function () {
     return sid;
   }
 
-  // Module 08: sampling — decide once per session, store result so all pages agree
+  // sampling once per session
   function shouldSample() {
     const stored = sessionStorage.getItem("_collector_sampled");
     if (stored !== null) return stored === "true";
@@ -80,7 +76,7 @@ const collector = (function () {
     return result;
   }
 
-  // Module 02: Network Information API — not in Safari/Firefox, so feature-detect
+  // Network Information API
   function getNetworkInfo() {
     if (!("connection" in navigator)) return {};
     const conn = navigator.connection;
@@ -92,9 +88,7 @@ const collector = (function () {
     };
   }
 
-  // Module 03: detect browser capabilities
-  // JS is always true (this code is running); images assumed true if JS works;
-  // CSS probed via getComputedStyle on a hidden div
+  // detect browser capabilities
   function getCapabilities() {
     const caps = { javascript: true, images: true, css: false };
 
@@ -108,7 +102,7 @@ const collector = (function () {
     return caps;
   }
 
-  // Module 03: cookie bridge — server can log _sid, _vp, _caps via %{...}C
+  // cookie
   function setCookieBridge(caps) {
     const sid = getSessionId();
     const vp = window.innerWidth + "x" + window.innerHeight;
@@ -121,8 +115,7 @@ const collector = (function () {
     document.cookie = `_caps=js:${js},img:${img},css:${css};path=/;max-age=1800;SameSite=Lax`;
   }
 
-  // Module 05: navigation timing — DNS, TCP, TLS, TTFB, DOM milestones
-  // Must be called after load event; setTimeout(fn,0) ensures loadEventEnd is set
+  // navigation timing, called after load event
   function getNavigationTiming() {
     const entries = performance.getEntriesByType("navigation");
     if (!entries.length) return {};
@@ -158,7 +151,7 @@ const collector = (function () {
     };
   }
 
-  // Module 05: resource summary — count, transfer, duration per type + slowest 3
+  // resource summary
   function getResourceSummary() {
     const resources = performance.getEntriesByType("resource");
     const byType = {
@@ -202,7 +195,7 @@ const collector = (function () {
     };
   }
 
-  // Module 06: thresholds for LCP (ms), CLS (unitless), INP (ms)
+  // thresholds
   const THRESHOLDS = { lcp: [2500, 4000], cls: [0.1, 0.25], inp: [200, 500] };
 
   function getRating(metric, value) {
@@ -213,13 +206,13 @@ const collector = (function () {
     return "poor";
   }
 
-  // Module 06: Web Vitals state (accumulated by observers)
+  // Web Vitals state
   let lcpValue = 0;
   let clsValue = 0;
   let inpValue = 0;
   const inpInteractions = [];
 
-  // Module 06: LCP — last entry before user interaction is the final value
+  // LCP
   function observeLCP() {
     try {
       const obs = new PerformanceObserver((list) => {
@@ -235,7 +228,7 @@ const collector = (function () {
     }
   }
 
-  // Module 06: CLS — accumulate shift values, skip shifts from user input
+  // CLS
   function observeCLS() {
     try {
       const obs = new PerformanceObserver((list) => {
@@ -254,7 +247,7 @@ const collector = (function () {
     }
   }
 
-  // Module 06: INP — worst interaction duration (simplified from 98th percentile)
+  // INP
   function observeINP() {
     try {
       const obs = new PerformanceObserver((list) => {
@@ -270,12 +263,12 @@ const collector = (function () {
     }
   }
 
-  // Module 07: error deduplication state + rate limit
+  // error deduplication state + rate limit
   const MAX_ERRORS = 10;
   const reportedErrors = new Set();
   let errorCount = 0;
 
-  // Module 07: send one error beacon, deduplicated + rate-limited
+  // send one error beacon, deduplicated + rate-limited
   function reportError(errorData) {
     if (errorCount >= MAX_ERRORS) return;
     const key = `${errorData.type}:${errorData.message || ""}:${errorData.source || ""}:${errorData.lineno || ""}`;
@@ -293,7 +286,7 @@ const collector = (function () {
     });
   }
 
-  // Module 07: attach global error listeners — capture phase required for resource errors
+  // attach global error listeners
   function initErrorTracking() {
     window.addEventListener(
       "error",
@@ -338,7 +331,7 @@ const collector = (function () {
     log("Error tracking enabled");
   }
 
-  // Module 10: detect automated browsers (Puppeteer, Selenium, Playwright, headless)
+  // detect automated browsers (Puppeteer, Selenium, Playwright, headless)
   function isBot() {
     if (navigator.webdriver) return true;
     const ua = navigator.userAgent;
@@ -349,7 +342,7 @@ const collector = (function () {
     return false;
   }
 
-  // Module 10: sessionStorage retry queue — cap at 50, drained on next page load
+  // sessionStorage retry queue
   function queueForRetry(payload) {
     try {
       const q = JSON.parse(sessionStorage.getItem("_collector_retry") || "[]");
@@ -373,9 +366,7 @@ const collector = (function () {
     }
   }
 
-  // Module 04: cascading delivery — sendBeacon → fetch(keepalive) → fetch
-  // Module 08: debug mode skips network and logs to console instead
-  // Module 10: retry on failure; self-measurement via performance.mark
+  // cascading delivery, skips network and logs to console instead, self-measurement via performance.mark
   function send(payload) {
     // Merge global properties (set via collector.set())
     for (const k of Object.keys(globalProps)) {
@@ -384,9 +375,9 @@ const collector = (function () {
 
     log("payload:", payload);
 
-    if (config.debug) return; // debug mode — don't send, just log
+    if (config.debug) return;
 
-    performance.mark("collector_send_start"); // Module 10: self-measurement
+    performance.mark("collector_send_start"); // self-measurement
 
     const json = JSON.stringify(payload);
     const blob = new Blob([json], { type: "application/json" });
@@ -409,18 +400,18 @@ const collector = (function () {
       headers: { "Content-Type": "application/json" },
       keepalive: true,
     }).catch(() => {
-      // Module 10: retry on fetch failure
+      // retry on fetch failure
       fetch(url, {
         method: "POST",
         body: json,
         headers: { "Content-Type": "application/json" },
       }).catch(() => {
-        queueForRetry(payload); // last resort — store for next page load
+        queueForRetry(payload); // last resort, store for next page load
       });
     });
   }
 
-  // Module 01: pageview beacon — static data + performance + resources
+  // pageview beacon
   function collectPageview() {
     const caps = getCapabilities();
     setCookieBridge(caps);
@@ -459,10 +450,10 @@ const collector = (function () {
     }
 
     send(payload);
-    sendTrackingPixel(); // Module 03: also log the hit server-side via Apache
+    sendTrackingPixel(); // log the hit server-side via Apache
   }
 
-  // Module 06: vitals beacon — sent when the user leaves the page
+  // vitals beacon, when the user leaves the page
   function sendVitals() {
     const ratings = {
       lcp: getRating("lcp", lcpValue),
@@ -490,7 +481,7 @@ const collector = (function () {
     });
   }
 
-  // Module 09: activity event buffer — flushed as a single beacon on page hide
+  // activity event buffer
   const activityEvents = [];
   let pageEnteredAt = null;
 
@@ -498,13 +489,13 @@ const collector = (function () {
     activityEvents.push({ kind, ...data, timestamp: new Date().toISOString() });
   }
 
-  // Module 09: idle detection — fire after 2s of no activity, record how long it lasted
+  // idle detection
   let idleTimer = null;
   let idleStart = null;
 
   function resetIdle() {
     if (idleStart !== null) {
-      // user came back — record how long the idle lasted and when it ended
+      // user came back
       const endedAt = new Date().toISOString();
       const duration = Date.now() - idleStart;
       pushEvent("idle", { duration, endedAt });
@@ -516,7 +507,7 @@ const collector = (function () {
     }, 2000);
   }
 
-  // Module 09: flush buffered activity events to the server
+  // flush buffered activity events to the server
   function flushActivity() {
     if (!activityEvents.length) return;
     const events = activityEvents.splice(0); // drain the array
@@ -530,7 +521,7 @@ const collector = (function () {
     });
   }
 
-  // Module 09: wire up mouse, keyboard, scroll, and idle listeners
+  // wire up mouse, keyboard, scroll, and idle listeners
   function initActivityTracking() {
     pageEnteredAt = new Date().toISOString();
     pushEvent("page-enter", {
@@ -538,7 +529,7 @@ const collector = (function () {
       page: document.title,
     });
 
-    // Throttle helpers — only emit once every 100ms for high-frequency events
+    // Throttle helpers
     let lastMove = 0;
     let lastScroll = 0;
 
@@ -550,7 +541,7 @@ const collector = (function () {
       resetIdle();
     });
 
-    // Clicks — record which mouse button (0=left, 1=middle, 2=right)
+    // Clicks
     document.addEventListener("click", (e) => {
       pushEvent("click", { x: e.clientX, y: e.clientY, button: e.button });
       resetIdle();
@@ -564,7 +555,7 @@ const collector = (function () {
       resetIdle();
     });
 
-    // Key events — record key name, not char value (avoids logging passwords)
+    // Key events
     document.addEventListener("keydown", (e) => {
       pushEvent("keydown", { key: e.key, code: e.code });
       resetIdle();
@@ -575,7 +566,7 @@ const collector = (function () {
       resetIdle();
     });
 
-    // Page exit — flush all buffered events
+    // Page exit
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
         pushEvent("page-exit", {
@@ -592,10 +583,7 @@ const collector = (function () {
     log("Activity tracking enabled");
   }
 
-  // Module 09: register an extension — must have { name, init, destroy? }
-  // Extensions receive a limited API (track, set, getConfig, getSessionId)
-  // They cannot call send() directly — all data flows through track() so
-  // sampling, debug mode, and endpoint config apply uniformly
+  // register an extension
   function use(extension) {
     if (!extension || !extension.name) {
       warn("use(): extension must have a name property");
@@ -619,10 +607,9 @@ const collector = (function () {
     log("Extension registered:", extension.name);
   }
 
-  // ── Public API ────────────────────────────────────────────────────────────
+  // Public API
 
-  // Module 08: configure and start the collector
-  // All features are opt-out via flags; calling init() twice is a no-op + warning
+  // configure and start the collector
   function init(options) {
     if (initialized) {
       warn("collector.init() called more than once — ignoring");
@@ -636,15 +623,15 @@ const collector = (function () {
         options && options[key] !== undefined ? options[key] : DEFAULTS[key];
     }
 
-    // Sampling: decide once per session — unsampled sessions are fully silent
+    // Sampling
     if (!shouldSample()) {
       log(`Session not sampled (rate: ${config.sampleRate})`);
       return;
     }
 
-    performance.mark("collector_init_start"); // Module 10: self-measurement
+    performance.mark("collector_init_start"); // self-measurement
 
-    // Module 10 gate: bot detection
+    // bot detection
     if (config.detectBots && isBot()) {
       log("bot detected — collection disabled");
       blocked = true;
@@ -654,37 +641,37 @@ const collector = (function () {
 
     initialized = true;
 
-    // Module 07: attach error listeners before anything else can throw
+    // attach error listeners before anything else can throw
     if (config.enableErrors) initErrorTracking();
 
-    // Module 09: start activity tracking (mouse, keyboard, scroll, idle)
+    // start activity tracking
     if (config.enableActivity) initActivityTracking();
 
-    // Module 06: start vitals observers immediately (buffered: true catches past entries)
+    // start vitals observers immediately
     if (config.enableVitals) {
       observeLCP();
       observeCLS();
       observeINP();
     }
 
-    // Module 10: drain any beacons that failed on a previous page load
+    // drain any beacons that failed on a previous page load
     processRetryQueue();
 
-    // Module 05: fire pageview beacon after load; setTimeout ensures loadEventEnd is set
+    // fire pageview beacon after load
     if (document.readyState === "complete") {
       setTimeout(collectPageview, 0);
     } else {
       window.addEventListener("load", () => setTimeout(collectPageview, 0));
     }
 
-    // Module 06: send final vitals when user hides the tab or navigates away
-    // Module 10: also track time-on-page (visible time only, not background time)
+    // send final vitals when user hides the tab or navigates away
+    // track time-on-page
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
         totalVisibleMs += Date.now() - pageShowTime;
         if (config.enableVitals) sendVitals();
       } else {
-        pageShowTime = Date.now(); // tab became visible again — reset timer
+        pageShowTime = Date.now(); // tab became visible again
       }
     });
 
@@ -697,13 +684,13 @@ const collector = (function () {
     log("initialized", config);
   }
 
-  // Module 08: send a custom event with optional data
+  // send a custom event with optional data
   function track(eventName, data) {
     if (!initialized) {
       warn("track() called before init()");
       return;
     }
-    if (blocked) return; // Module 10: silently no-op for unsampled/bot/no-consent sessions
+    if (blocked) return;
     const payload = {
       type: eventName || "custom-event",
       sessionId: getSessionId(),
@@ -715,23 +702,19 @@ const collector = (function () {
     send(payload);
   }
 
-  // Module 08: attach a property to every future beacon (good for env, version, plan)
+  // attach a property to every future beacon
   function set(key, value) {
     globalProps[key] = value;
     log("global prop set:", key, "=", value);
   }
 
-  // Module 08: link the session to an authenticated user
-  // Functionally set('userId', id) but explicit enough to match Segment/Amplitude patterns
+  // link the session to an authenticated user
   function identify(userId) {
     globalProps.userId = userId;
     log("user identified:", userId);
   }
 
-  // Module 10: command queue — drain _cq array then replace with live proxy
-  // This allows <script async> loading: page pushes commands before script loads,
-  // script processes them when ready. All subsequent _cq.push() calls execute immediately.
-  // Pattern used by Google Analytics (dataLayer), Segment, Amplitude, etc.
+  // command queue
   const publicAPI = { init, track, set, identify, use };
 
   (function processQueue() {
@@ -741,7 +724,7 @@ const collector = (function () {
       const params = args.slice(1);
       if (typeof publicAPI[method] === "function") publicAPI[method](...params);
     }
-    // Replace the plain array with a live proxy — future _cq.push() executes immediately
+    // Replace the plain array with a live proxy
     window._cq = {
       push(args) {
         const method = args[0];
@@ -752,7 +735,7 @@ const collector = (function () {
     };
   })();
 
-  // Auto-initialize with defaults if no _cq.push(['init', ...]) was queued
+  // Auto-initialize with defaults
   if (!initialized) {
     init();
   }
@@ -760,10 +743,11 @@ const collector = (function () {
   return publicAPI;
 })();
 
-// ── Extensions (Module 09) ────────────────────────────────────────────────
+// Extensions
 // Register with: collector.use(ClickTracker) / collector.use(ScrollTracker)
 
-// Module 09: click tracker extension — CSS selector path + coordinates
+// click tracker extension
+// CSS selector path + coordinates
 window.ClickTracker = {
   name: "click-tracker",
   _handler: null,
@@ -788,7 +772,7 @@ window.ClickTracker = {
     document.addEventListener("click", this._handler, true);
   },
 
-  // Walk up the DOM to build a CSS path; stop at an ID (IDs are unique)
+  // build a CSS path
   _getSelector(el) {
     const parts = [];
     while (el && el !== document.body) {
@@ -814,7 +798,7 @@ window.ClickTracker = {
   },
 };
 
-// Module 09: scroll depth extension — reports at 25/50/75/100% + final depth on exit
+// scroll depth extension
 window.ScrollTracker = {
   name: "scroll-tracker",
   _api: null,
@@ -877,13 +861,11 @@ window.ScrollTracker = {
   },
 };
 
-// ── ConsentManager (Module 10) ────────────────────────────────────────────
-// Usage: if (!ConsentManager.check()) ConsentManager.showBanner({ onAccept: () => collector.init() });
+// ConsentManager
 
 window.ConsentManager = (function () {
   "use strict";
 
-  // Module 10: same logic as hasConsent() inside the collector
   function check() {
     if (navigator.globalPrivacyControl) return false;
     const cookies = document.cookie.split(";");
@@ -892,10 +874,10 @@ window.ConsentManager = (function () {
       if (cookie.startsWith("analytics_consent="))
         return cookie.split("=")[1] === "true";
     }
-    return false; // GDPR default: no cookie = no consent
+    return false;
   }
 
-  // Module 10: set consent cookie for 1 year
+  // set consent cookie for 1 year
   function grant() {
     const exp = new Date();
     exp.setFullYear(exp.getFullYear() + 1);
@@ -923,7 +905,7 @@ window.ConsentManager = (function () {
     if (b) b.parentNode.removeChild(b);
   }
 
-  // Module 10: minimal consent banner — no framework, pure DOM
+  // minimal consent banner
   function showBanner(opts) {
     opts = opts || {};
     if (document.cookie.includes("analytics_consent=")) return; // already decided
