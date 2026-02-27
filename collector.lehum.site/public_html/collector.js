@@ -47,7 +47,7 @@ const collector = (function () {
     return Math.round(n * 100) / 100;
   }
 
-  // Module 03: fire a GET request the server responds to with a 1x1 GIF
+  // Module 03: fire a GET request the server responds to with a 1x1 GIF test
   // Apache logs the hit including _sid/_vp/_caps cookies from setCookieBridge()
   function sendTrackingPixel() {
     try {
