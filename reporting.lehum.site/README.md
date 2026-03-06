@@ -1,6 +1,7 @@
 # HW4 — Derisk Checkpoint
 
 ## Team Members
+
 - Kile Hsu
 - Varun Sharma
 - Aaron Chiuwei
@@ -13,7 +14,7 @@
 ## Credentials (grader)
 
 - Username: `admin`
-- Password: `cse135`
+- Password: `VarunSharma12345!`
 
 ## Part 1 — Authentication (MVC + Login/Logout)
 
@@ -31,15 +32,15 @@ No client-side-only auth check that could be bypassed. The dashboard HTML is ser
 
 The dashboard at `/dashboard` loads `GET /api/pageviews` and renders a live HTML table with:
 
-| Column | Description |
-|--------|-------------|
-| # | Row ID from database |
-| Timestamp | When the page was loaded (`page_started`) |
-| URL | Page path visited |
-| Session | First 12 chars of session ID |
+| Column    | Description                                                                  |
+| --------- | ---------------------------------------------------------------------------- |
+| #         | Row ID from database                                                         |
+| Timestamp | When the page was loaded (`page_started`)                                    |
+| URL       | Page path visited                                                            |
+| Session   | First 12 chars of session ID                                                 |
 | TTFB (ms) | Time to first byte, color-coded (green < 200ms, yellow < 500ms, red ≥ 500ms) |
-| Load (ms) | Total page load time |
-| Browser | Parsed from user agent string |
+| Load (ms) | Total page load time                                                         |
+| Browser   | Parsed from user agent string                                                |
 
 A live filter input lets you search by URL or session ID without a page reload.
 
@@ -48,10 +49,12 @@ A live filter input lets you search by URL or session ID without a page reload.
 Two charts rendered using Chart.js:
 
 **Chart 1 — Pageviews per hour (bar chart)**
+
 - Shows the distribution of pageviews across the last 24 hours
 - Data is aggregated client-side from the `/api/pageviews` response
 
 **Chart 2 — Error type breakdown (doughnut chart)**
+
 - Shows counts of `js-error`, `resource-error`, `promise-rejection` etc. from `/api/errors`
 - Shows "No errors recorded yet" if the errors table is empty
 
