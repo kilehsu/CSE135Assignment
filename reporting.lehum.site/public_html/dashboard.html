@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    nav {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 0 24px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    nav .brand {
+      font-size: 15px;
+      font-weight: 700;
+      color: #f1f5f9;
+      letter-spacing: -0.3px;
+    }
+
+    nav .brand span { color: #6366f1; }
+
+    .nav-right { display: flex; align-items: center; gap: 16px; }
+
+    .nav-right .user {
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    #logoutBtn {
+      background: transparent;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    #logoutBtn:hover { border-color: #6366f1; color: #6366f1; }
+
+    /* ── Layout ── */
+    main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 48px; }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      margin-bottom: 14px;
+    }
+
+    /* ── Stat cards ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 18px 20px;
+    }
+
+    .stat-card .label {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 6px;
+    }
+
+    .stat-card .value {
+      font-size: 26px;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+
+    .stat-card .value.accent { color: #6366f1; }
+
+    /* ── Charts ── */
+    .charts {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    @media (max-width: 768px) { .charts { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .chart-card h2 { margin-bottom: 18px; }
+
+    .chart-wrap { position: relative; }
+
+    /* ── Table ── */
+    .table-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .table-header h2 { margin-bottom: 0; }
+
+    #tableSearch {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      color: #e2e8f0;
+      width: 220px;
+      outline: none;
+    }
+
+    #tableSearch:focus { border-color: #6366f1; }
+
+    .table-wrap { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead th {
+      background: #0f172a;
+      color: #64748b;
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 12px;
+      white-space: nowrap;
+      border-bottom: 1px solid #334155;
+    }
+
+    tbody tr { border-bottom: 1px solid #1e293b; transition: background 0.1s; }
+    tbody tr:hover { background: #263347; }
+
+    tbody td {
+      padding: 10px 12px;
+      color: #cbd5e1;
+      white-space: nowrap;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    td.mono { font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .badge-good  { background: #052e16; color: #4ade80; }
+    .badge-ok    { background: #1c1917; color: #fbbf24; }
+    .badge-slow  { background: #450a0a; color: #f87171; }
+
+    #loading {
+      text-align: center;
+      padding: 40px;
+      color: #475569;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="brand">Analytics <span>Dashboard</span></div>
+    <div class="nav-right">
+      <span class="user" id="navUser"></span>
+      <button id="logoutBtn">Logout</button>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Stat cards -->
+    <div class="stats" id="statsRow">
+      <div class="stat-card"><div class="label">Total Pageviews</div><div class="value accent" id="statPageviews">—</div></div>
+      <div class="stat-card"><div class="label">Unique Sessions</div><div class="value" id="statSessions">—</div></div>
+      <div class="stat-card"><div class="label">Avg TTFB (ms)</div><div class="value" id="statTtfb">—</div></div>
+      <div class="stat-card"><div class="label">Total Errors</div><div class="value" id="statErrors">—</div></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts">
+      <div class="chart-card">
+        <h2>Pageviews — Last 24 Hours</h2>
+        <div class="chart-wrap"><canvas id="chartPageviews" height="180"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h2>Error Types</h2>
+        <div class="chart-wrap"><canvas id="chartErrors" height="180"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Pageviews table -->
+    <div class="table-card">
+      <div class="table-header">
+        <h2>Recent Pageviews</h2>
+        <input type="text" id="tableSearch" placeholder="Filter by URL or session…">
+      </div>
+      <div class="table-wrap">
+        <div id="loading">Loading data…</div>
+        <table id="pvTable" style="display:none">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Timestamp</th>
+              <th>URL</th>
+              <th>Session</th>
+              <th>TTFB (ms)</th>
+              <th>Load (ms)</th>
+              <th>Browser</th>
+            </tr>
+          </thead>
+          <tbody id="pvBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ── Auth check ──────────────────────────────────────────────────────────
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/me');
+        if (!r.ok) { window.location.href = '/login'; return; }
+        const { user } = await r.json();
+        document.getElementById('navUser').textContent = user;
+      } catch {
+        window.location.href = '/login';
+      }
+    })();
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    });
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    function fmtTime(ts) {
+      if (!ts) return '—';
+      const d = new Date(ts);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function shortUA(ua) {
+      if (!ua) return '—';
+      if (/Chrome\/(\d+)/.test(ua))  return 'Chrome '  + ua.match(/Chrome\/(\d+)/)[1];
+      if (/Firefox\/(\d+)/.test(ua)) return 'Firefox ' + ua.match(/Firefox\/(\d+)/)[1];
+      if (/Safari\//.test(ua))       return 'Safari';
+      return ua.substring(0, 30);
+    }
+
+    function ttfbBadge(ms) {
+      if (!ms && ms !== 0) return '<span class="badge badge-ok">—</span>';
+      if (ms < 200)  return `<span class="badge badge-good">${ms}</span>`;
+      if (ms < 500)  return `<span class="badge badge-ok">${ms}</span>`;
+      return `<span class="badge badge-slow">${ms}</span>`;
+    }
+
+    function shortUrl(url) {
+      try { return new URL(url).pathname || url; } catch { return url; }
+    }
+
+    // ── Fetch data ───────────────────────────────────────────────────────────
+    let allPageviews = [];
+
+    async function loadAll() {
+      const [pvRes, errRes] = await Promise.all([
+        fetch('/api/pageviews'),
+        fetch('/api/errors'),
+      ]);
+      allPageviews = pvRes.ok ? await pvRes.json() : [];
+      const errors = errRes.ok ? await errRes.json() : [];
+
+      renderStats(allPageviews, errors);
+      renderPageviewsChart(allPageviews);
+      renderErrorsChart(errors);
+      renderTable(allPageviews);
+    }
+
+    // ── Stats cards ──────────────────────────────────────────────────────────
+    function renderStats(pvs, errs) {
+      document.getElementById('statPageviews').textContent = pvs.length;
+
+      const sessions = new Set(pvs.map(r => r.session_id)).size;
+      document.getElementById('statSessions').textContent = sessions;
+
+      const ttfbs = pvs.map(r => r.ttfb_ms).filter(v => v != null && v > 0);
+      const avg   = ttfbs.length ? Math.round(ttfbs.reduce((a, b) => a + b, 0) / ttfbs.length) : '—';
+      document.getElementById('statTtfb').textContent = avg;
+
+      document.getElementById('statErrors').textContent = errs.length;
+    }
+
+    // ── Chart 1: Pageviews per hour (last 24h) ───────────────────────────────
+    function renderPageviewsChart(pvs) {
+      const now    = Date.now();
+      const bins   = Array.from({ length: 24 }, (_, i) => ({ label: `${23 - i}h ago`, count: 0 }));
+      pvs.forEach(pv => {
+        const ts   = new Date(pv.page_started || pv.entered_at || 0).getTime();
+        const diff = now - ts;
+        const hr   = Math.floor(diff / 3600000);
+        if (hr >= 0 && hr < 24) bins[23 - hr].count++;
+      });
+
+      new Chart(document.getElementById('chartPageviews'), {
+        type: 'bar',
+        data: {
+          labels:   bins.map(b => b.label),
+          datasets: [{
+            label:           'Pageviews',
+            data:            bins.map(b => b.count),
+            backgroundColor: 'rgba(99,102,241,0.7)',
+            borderColor:     '#6366f1',
+            borderWidth:     1,
+            borderRadius:    4,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#64748b', maxTicksLimit: 8 }, grid: { color: '#1e293b' } },
+            y: { ticks: { color: '#64748b' }, grid: { color: '#334155' }, beginAtZero: true },
+          },
+        },
+      });
+    }
+
+    // ── Chart 2: Error type breakdown ────────────────────────────────────────
+    function renderErrorsChart(errs) {
+      const counts = {};
+      errs.forEach(e => {
+        const t = e.error_type || 'unknown';
+        counts[t] = (counts[t] || 0) + 1;
+      });
+
+      const labels = Object.keys(counts);
+      const data   = Object.values(counts);
+
+      if (!labels.length) {
+        document.getElementById('chartErrors').parentElement.innerHTML =
+          '<p style="color:#64748b;font-size:13px;text-align:center;padding:40px 0">No errors recorded yet.</p>';
+        return;
+      }
+
+      const palette = ['#6366f1','#22d3ee','#f59e0b','#f87171','#34d399','#a78bfa'];
+
+      new Chart(document.getElementById('chartErrors'), {
+        type: 'doughnut',
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: palette.slice(0, labels.length),
+            borderWidth:     2,
+            borderColor:     '#0f172a',
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { color: '#94a3b8', boxWidth: 12, padding: 14, font: { size: 12 } },
+            },
+          },
+        },
+      });
+    }
+
+    // ── Table ────────────────────────────────────────────────────────────────
+    function renderTable(pvs) {
+      document.getElementById('loading').style.display  = 'none';
+      document.getElementById('pvTable').style.display  = 'table';
+
+      const tbody = document.getElementById('pvBody');
+      tbody.innerHTML = '';
+
+      pvs.forEach((r, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${r.id || i + 1}</td>
+          <td>${fmtTime(r.page_started || r.entered_at)}</td>
+          <td title="${r.url || ''}">${shortUrl(r.url)}</td>
+          <td class="mono">${(r.session_id || '').substring(0, 12)}…</td>
+          <td>${ttfbBadge(r.ttfb_ms)}</td>
+          <td>${r.total_load_ms != null ? r.total_load_ms + ' ms' : '—'}</td>
+          <td>${shortUA(r.user_agent)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      if (!pvs.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#475569">No pageviews recorded yet.</td></tr>';
+      }
+    }
+
+    // ── Search filter ────────────────────────────────────────────────────────
+    document.getElementById('tableSearch').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      const filtered = allPageviews.filter(r =>
+        (r.url || '').toLowerCase().includes(q) ||
+        (r.session_id || '').toLowerCase().includes(q)
+      );
+      renderTable(filtered);
+    });
+
+    // ── Boot ─────────────────────────────────────────────────────────────────
+    loadAll().catch(err => {
+      document.getElementById('loading').textContent = 'Error loading data: ' + err.message;
+    });
+  </script>
+</body>
+</html>
