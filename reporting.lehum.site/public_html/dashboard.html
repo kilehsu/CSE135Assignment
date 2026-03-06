@@ -328,7 +328,7 @@
       const sessions = new Set(pvs.map(r => r.session_id)).size;
       document.getElementById('statSessions').textContent = sessions;
 
-      const ttfbs = pvs.map(r => r.ttfb_ms).filter(v => v != null && v > 0);
+      const ttfbs = pvs.map(r => Number(r.ttfb_ms)).filter(v => !isNaN(v) && v > 0);
       const avg   = ttfbs.length ? Math.round(ttfbs.reduce((a, b) => a + b, 0) / ttfbs.length) : '—';
       document.getElementById('statTtfb').textContent = avg;
 
