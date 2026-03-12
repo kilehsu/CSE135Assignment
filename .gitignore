@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Cursor IDE
+.cursor/plans/
+
+# Node
+node_modules/
+**/node_modules/
+
+# Environment secrets — NEVER commit real credentials
+.env
+**/.env
+
+# Runtime-generated export snapshots
+reporting.lehum.site/public_html/exports/

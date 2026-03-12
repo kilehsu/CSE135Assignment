@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Management — Analytics</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+    nav {
+      background: #1e293b; border-bottom: 1px solid #334155;
+      padding: 0 24px; height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-left { display: flex; align-items: center; gap: 24px; }
+    .brand    { font-size: 15px; font-weight: 700; color: #f1f5f9; }
+    .brand span { color: #6366f1; }
+    .nav-links a {
+      font-size: 13px; color: #94a3b8; text-decoration: none;
+      padding: 5px 10px; border-radius: 6px; transition: all 0.15s;
+    }
+    .nav-links a:hover, .nav-links a.active { background: #0f172a; color: #f1f5f9; }
+    .nav-right { display: flex; align-items: center; gap: 12px; }
+    .nav-user  { font-size: 13px; color: #64748b; }
+
+    main { max-width: 960px; margin: 0 auto; padding: 28px 24px 48px; }
+
+    h1 { font-size: 20px; font-weight: 600; color: #f1f5f9; margin-bottom: 24px; }
+
+    .card {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 10px; padding: 20px; margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 12px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: #64748b; margin-bottom: 16px;
+    }
+
+    /* Form */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-size: 12px; color: #94a3b8; }
+    .form-group input, .form-group select {
+      background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+      color: #e2e8f0; padding: 8px 10px; font-size: 13px; outline: none;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #6366f1; }
+    .form-group.full { grid-column: 1 / -1; }
+
+    .sections-checkboxes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+    .sections-checkboxes label {
+      display: flex; align-items: center; gap: 5px; font-size: 12px; color: #94a3b8;
+      background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+      padding: 5px 10px; cursor: pointer; transition: border-color 0.15s;
+    }
+    .sections-checkboxes label:hover { border-color: #6366f1; }
+    .sections-checkboxes input[type=checkbox] { accent-color: #6366f1; }
+
+    .form-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+    .btn-primary {
+      background: #6366f1; border: 1px solid #6366f1; color: #fff;
+      padding: 8px 18px; border-radius: 6px; font-size: 13px;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-sm {
+      background: transparent; border: 1px solid #334155; color: #94a3b8;
+      padding: 5px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-sm:hover { border-color: #6366f1; color: #6366f1; }
+    .btn-danger {
+      background: transparent; border: 1px solid #7f1d1d; color: #f87171;
+      padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-danger:hover { background: #7f1d1d; }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      background: #0f172a; color: #64748b; font-weight: 600;
+      text-align: left; padding: 9px 12px; border-bottom: 1px solid #334155;
+    }
+    tbody tr { border-bottom: 1px solid #1a2744; transition: background 0.1s; }
+    tbody tr:hover { background: #263347; }
+    tbody td { padding: 9px 12px; color: #cbd5e1; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 99px;
+      font-size: 11px; font-weight: 600;
+    }
+    .badge-admin   { background: #1e1b4b; color: #818cf8; }
+    .badge-analyst { background: #052e16; color: #4ade80; }
+    .badge-viewer  { background: #1c1917; color: #94a3b8; }
+
+    .alert {
+      padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 16px;
+    }
+    .alert-success { background: #052e16; border: 1px solid #166534; color: #4ade80; }
+    .alert-error   { background: #450a0a; border: 1px solid #7f1d1d; color: #f87171; }
+
+    noscript .msg {
+      background: #1e293b; border: 1px solid #f59e0b; color: #fbbf24;
+      padding: 16px 20px; border-radius: 8px; margin: 24px; font-size: 14px;
+    }
+  </style>
+  <noscript><style>.js-only { display: none !important; }</style></noscript>
+</head>
+<body>
+
+<noscript>
+  <div class="msg" style="background:#1e293b;border:1px solid #f59e0b;color:#fbbf24;padding:16px 20px;border-radius:8px;margin:24px;font-size:14px;">
+    JavaScript is required to use this page.
+  </div>
+</noscript>
+
+<nav class="js-only">
+  <div class="nav-left">
+    <div class="brand">Analytics <span>Admin</span></div>
+    <div class="nav-links">
+      <a href="/dashboard">Dashboard</a>
+      <a href="/reports">Saved Reports</a>
+      <a href="/admin" class="active">Admin</a>
+    </div>
+  </div>
+  <div class="nav-right">
+    <span class="nav-user" id="navUser"></span>
+    <button class="btn-sm" id="logoutBtn">Logout</button>
+  </div>
+</nav>
+
+<main class="js-only">
+  <h1>User Management</h1>
+  <div id="alertBox" style="display:none"></div>
+
+  <!-- Create User -->
+  <div class="card">
+    <div class="card-title">Create New User</div>
+    <form id="createForm" autocomplete="off">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="newEmail" required placeholder="e.g. sally@lehum.site">
+        </div>
+        <div class="form-group">
+          <label>Display Name</label>
+          <input type="text" id="newDisplayName" placeholder="e.g. Sally">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="newPassword" required placeholder="min 6 characters">
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select id="newRole">
+            <option value="viewer">Viewer — saved reports only</option>
+            <option value="analyst">Analyst — assigned sections</option>
+            <option value="super_admin">Super Admin — full access</option>
+          </select>
+        </div>
+        <div class="form-group" id="sectionsGroup">
+          <label>Allowed Sections (analyst only)</label>
+          <div class="sections-checkboxes">
+            <label><input type="checkbox" value="traffic">     Traffic</label>
+            <label><input type="checkbox" value="performance"> Performance</label>
+            <label><input type="checkbox" value="behavior">    Behavior</label>
+            <label><input type="checkbox" value="errors">      Errors</label>
+          </div>
+        </div>
+      </div>
+      <div class="form-footer">
+        <button type="submit" class="btn-primary">Create User</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Users Table -->
+  <div class="card">
+    <div class="card-title">All Users</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Email</th><th>Name</th><th>Role</th><th>Sections</th><th>Created</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="usersBody">
+          <tr><td colspan="6" style="text-align:center;padding:24px;color:#475569">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<!-- Edit Modal -->
+<div id="editModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center">
+  <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;width:460px;max-width:90vw">
+    <h2 style="font-size:16px;font-weight:600;color:#f1f5f9;margin-bottom:20px">Edit User</h2>
+    <input type="hidden" id="editId">
+    <div class="form-grid">
+      <div class="form-group">
+        <label>New Password (leave blank to keep)</label>
+        <input type="password" id="editPassword" placeholder="new password…">
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select id="editRole">
+          <option value="viewer">Viewer</option>
+          <option value="analyst">Analyst</option>
+          <option value="super_admin">Super Admin</option>
+        </select>
+      </div>
+      <div class="form-group full" id="editSectionsGroup">
+        <label>Allowed Sections</label>
+        <div class="sections-checkboxes" id="editSectionsCheckboxes">
+          <label><input type="checkbox" value="traffic">     Traffic</label>
+          <label><input type="checkbox" value="performance"> Performance</label>
+          <label><input type="checkbox" value="behavior">    Behavior</label>
+          <label><input type="checkbox" value="errors">      Errors</label>
+        </div>
+      </div>
+    </div>
+    <div class="form-footer">
+      <button class="btn-sm" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── Auth guard ─────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    const r = await fetch('/api/auth/me');
+    if (!r.ok) { window.location.href = '/login'; return; }
+    const u = await r.json();
+    if (u.role !== 'super_admin') { window.location.href = '/403'; return; }
+    document.getElementById('navUser').textContent = u.user + ' (super_admin)';
+    loadUsers();
+  } catch { window.location.href = '/login'; }
+})();
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login';
+});
+
+// ── Role → sections visibility ─────────────────────────────────────────────────
+function toggleSectionsVisibility(selectEl, groupEl) {
+  groupEl.style.display = selectEl.value === 'analyst' ? '' : 'none';
+}
+const newRole = document.getElementById('newRole');
+const secGrp  = document.getElementById('sectionsGroup');
+newRole.addEventListener('change', () => toggleSectionsVisibility(newRole, secGrp));
+toggleSectionsVisibility(newRole, secGrp);
+
+document.getElementById('editRole').addEventListener('change', () => {
+  toggleSectionsVisibility(document.getElementById('editRole'), document.getElementById('editSectionsGroup'));
+});
+
+// ── Load users ─────────────────────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    const r = await fetch('/api/users');
+    if (!r.ok) return;
+    const users = await r.json();
+    renderUsers(users);
+  } catch {}
+}
+
+function roleBadge(role) {
+  if (role === 'super_admin') return '<span class="badge badge-admin">super_admin</span>';
+  if (role === 'analyst')     return '<span class="badge badge-analyst">analyst</span>';
+  return '<span class="badge badge-viewer">viewer</span>';
+}
+
+function fmtDate(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString();
+}
+
+function renderUsers(users) {
+  document.getElementById('usersBody').innerHTML = users.map(u => `
+    <tr>
+      <td>${u.id}</td>
+      <td><strong>${u.email}</strong></td>
+      <td>${u.display_name || '—'}</td>
+      <td>${roleBadge(u.role)}</td>
+      <td style="color:#64748b">${(u.sections_allowed||[]).join(', ') || '—'}</td>
+      <td>${fmtDate(u.created_at)}</td>
+      <td>
+        <button class="btn-sm" style="font-size:12px;margin-right:6px" onclick="openEditModal(${u.id},'${u.role}',${JSON.stringify(u.sections_allowed||[])})">Edit</button>
+        <button class="btn-danger" onclick="deleteUser(${u.id},'${u.email}')">Delete</button>
+      </td>
+    </tr>`).join('') ||
+    '<tr><td colspan="6" style="text-align:center;padding:24px;color:#475569">No users found.</td></tr>';
+}
+
+// ── Create user ────────────────────────────────────────────────────────────────
+document.getElementById('createForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email       = document.getElementById('newEmail').value.trim();
+  const displayName = document.getElementById('newDisplayName').value.trim();
+  const password    = document.getElementById('newPassword').value;
+  const role        = document.getElementById('newRole').value;
+  const sections    = [...document.querySelectorAll('#sectionsGroup input[type=checkbox]:checked')]
+    .map(c => c.value);
+
+  try {
+    const r = await fetch('/api/users', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, display_name: displayName, password, role, sections_allowed: sections }),
+    });
+    const data = await r.json();
+    if (r.ok) {
+      showAlert('User "' + email + '" created.', 'success');
+      document.getElementById('createForm').reset();
+      toggleSectionsVisibility(newRole, secGrp);
+      loadUsers();
+    } else {
+      showAlert(data.error || 'Failed to create user.', 'error');
+    }
+  } catch { showAlert('Network error.', 'error'); }
+});
+
+// ── Edit modal ─────────────────────────────────────────────────────────────────
+function openEditModal(id, role, sections) {
+  document.getElementById('editId').value       = id;
+  document.getElementById('editRole').value     = role;
+  document.getElementById('editPassword').value = '';
+  document.querySelectorAll('#editSectionsCheckboxes input[type=checkbox]').forEach(cb => {
+    cb.checked = sections.includes(cb.value);
+  });
+  toggleSectionsVisibility(document.getElementById('editRole'), document.getElementById('editSectionsGroup'));
+  document.getElementById('editModal').style.display = 'flex';
+}
+function closeEditModal() { document.getElementById('editModal').style.display = 'none'; }
+
+async function saveEdit() {
+  const id       = document.getElementById('editId').value;
+  const role     = document.getElementById('editRole').value;
+  const password = document.getElementById('editPassword').value;
+  const sections = [...document.querySelectorAll('#editSectionsCheckboxes input[type=checkbox]:checked')]
+    .map(c => c.value);
+  const body = { role, sections_allowed: sections };
+  if (password) body.password = password;
+  try {
+    const r = await fetch('/api/users/' + id, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) {
+      closeEditModal();
+      showAlert('User updated.', 'success');
+      loadUsers();
+    } else {
+      const d = await r.json();
+      showAlert(d.error || 'Failed to update.', 'error');
+    }
+  } catch { showAlert('Network error.', 'error'); }
+}
+
+// ── Delete user ────────────────────────────────────────────────────────────────
+async function deleteUser(id, username) {
+  if (!confirm('Delete user "' + username + '"? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/users/' + id, { method: 'DELETE' });
+    if (r.ok) { showAlert('User deleted.', 'success'); loadUsers(); }
+    else { const d = await r.json(); showAlert(d.error || 'Failed.', 'error'); }
+  } catch { showAlert('Network error.', 'error'); }
+}
+
+// ── Alert helper ───────────────────────────────────────────────────────────────
+function showAlert(msg, type) {
+  const box = document.getElementById('alertBox');
+  box.className = 'alert alert-' + type;
+  box.textContent = msg;
+  box.style.display = '';
+  setTimeout(() => { box.style.display = 'none'; }, 4000);
+}
+</script>
+</body>
+</html>
