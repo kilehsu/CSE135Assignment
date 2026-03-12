@@ -1005,7 +1005,7 @@ function renderPerformance() {
         <td class="mono">${r.id || i+1}</td>
         <td>${fmtTime(r.page_started || r.entered_at)}</td>
         <td title="${r.url||''}">${shortPage(r.url)}</td>
-        <td class="mono">${(r.session_id||'').substring(0,12)}…</td>
+        <td class="mono" title="Click to copy full session ID" style="cursor:pointer;color:#818cf8" onclick="navigator.clipboard.writeText('${r.session_id||''}').then(()=>{this.textContent='Copied!';setTimeout(()=>{this.textContent='${(r.session_id||'').substring(0,12)}…'},1200)})">${(r.session_id||'').substring(0,12)}…</td>
         <td>${ttfbBadge(r.ttfb_ms)}</td>
         <td>${r.total_load_ms != null ? r.total_load_ms + 'ms' : '—'}</td>
         <td>${shortUA(r.user_agent)}</td>

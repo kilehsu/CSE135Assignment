@@ -76,4 +76,4 @@ INSERT INTO app_users (email, display_name, password_hash, role, sections_allowe
    '$2b$12$W66Ws6noWcWtPI4tqxeOCep6yJ05OZOlJyv3RaOCR8ZNmKoxN16HC',
    'viewer',
    '{}')
-ON CONFLICT (username) DO NOTHING;
+ON CONFLICT (email) DO NOTHING;
