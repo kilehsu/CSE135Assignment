@@ -157,17 +157,7 @@
         outline: none;
         border-color: #6366f1;
       }
-      .compare-toggle {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-        color: #64748b;
-      }
-      .compare-toggle input {
-        cursor: pointer;
-        accent-color: #6366f1;
-      }
+
       #applyDates {
         margin-left: 4px;
       }
@@ -617,9 +607,7 @@
       <input type="date" id="dateFrom" />
       <label>To</label>
       <input type="date" id="dateTo" />
-      <label class="compare-toggle">
-        <input type="checkbox" id="compareToggle" /> Compare to prior period
-      </label>
+
       <button
         class="btn-primary"
         id="applyDates"
@@ -1046,9 +1034,6 @@
       let activityData = {};
       let exitsSummary = [];
       let transitions = [];
-      let compareMode = false;
-      let prevPageviews = [];
-      let prevErrors = [];
       
       // Track all chart instances for cleanup
       const charts = {};
@@ -1086,18 +1071,6 @@
         return p.toString() ? "?" + p.toString() : "";
       }
 
-      function shiftRange(from, to) {
-        // Returns {from, to} for the prior period of equal length
-        const f = new Date(from + "T00:00:00Z");
-        const t = new Date(to + "T23:59:59Z");
-        const diff = t - f;
-        const pf = new Date(f - diff);
-        const pt = new Date(f - 1);
-        return {
-          from: pf.toISOString().split("T")[0],
-          to: pt.toISOString().split("T")[0],
-        };
-      }
 
       // ── Format helpers ─────────────────────────────────────────────────────────────
       function fmtTime(ts) {
@@ -1246,16 +1219,8 @@
         document.getElementById("dateFrom").value = month
           .toISOString()
           .split("T")[0];
-        document.getElementById("compareToggle").checked = false;
-        compareMode = false;
         loadAll();
       });
-      document
-        .getElementById("compareToggle")
-        .addEventListener("change", (e) => {
-          compareMode = e.target.checked;
-          loadAll();
-        });
 
       // ── Live counter (SSE) ────────────────────────────────────────────────────────
       function initLiveCounter() {
@@ -1303,27 +1268,8 @@
             : Promise.resolve([]),
         ];
 
-        let prevFetches = [Promise.resolve([]), Promise.resolve([])];
-        if (compareMode) {
-          const { from, to } = getDateRange();
-          if (from && to) {
-            const { from: pf, to: pt } = shiftRange(from, to);
-            const pqs = "?from=" + pf + "T00:00:00Z&to=" + pt + "T23:59:59Z";
-            prevFetches = [
-              canSee("traffic")
-                ? fetch("/api/pageviews" + pqs).then((r) =>
-                    r.ok ? r.json() : [],
-                  )
-                : Promise.resolve([]),
-              canSee("errors")
-                ? fetch("/api/errors" + pqs).then((r) => (r.ok ? r.json() : []))
-                : Promise.resolve([]),
-            ];
-          }
-        }
-
-        const [pvs, errs, vitals, activity, exits, trans, ppvs, perrs] =
-          await Promise.all([...fetches, ...prevFetches]);
+        const [pvs, errs, vitals, activity, exits, trans] =
+          await Promise.all(fetches);
 
         allPageviews = pvs;
         allErrors = errs;
@@ -1331,8 +1277,6 @@
         activityData = activity;
         exitsSummary = exits;
         transitions = trans;
-        prevPageviews = ppvs;
-        prevErrors = perrs;
 
         renderOverview();
         renderTraffic();
@@ -1507,24 +1451,6 @@
             pointRadius: 3,
           },
         ];
-
-        if (compareMode && prevPageviews.length) {
-          const prevBuckets = {};
-          prevPageviews.forEach((pv) => {
-            const day = (pv.page_started || pv.entered_at || "").split("T")[0];
-            if (day) prevBuckets[day] = (prevBuckets[day] || 0) + 1;
-          });
-          datasets.push({
-            label: "Prior period",
-            data: dayLabels.map((d) => prevBuckets[d] || 0),
-            borderColor: "#334155",
-            backgroundColor: "transparent",
-            fill: false,
-            tension: 0.3,
-            borderDash: [5, 3],
-            pointRadius: 2,
-          });
-        }
 
         createChart("chartTrafficLine", {
           type: "line",
@@ -2129,23 +2055,6 @@
           },
         ];
 
-        if (compareMode && prevErrors.length) {
-          const prevBuckets = {};
-          prevErrors.forEach((e) => {
-            const day = (e.ts || "").split("T")[0];
-            if (day) prevBuckets[day] = (prevBuckets[day] || 0) + 1;
-          });
-          errLineDatasets.push({
-            label: "Prior period",
-            data: errLabels.map((d) => prevBuckets[d] || 0),
-            borderColor: "#334155",
-            backgroundColor: "transparent",
-            fill: false,
-            tension: 0.3,
-            borderDash: [5, 3],
-            pointRadius: 2,
-          });
-        }
 
         createChart("chartErrorsLine", {
           type: "line",
