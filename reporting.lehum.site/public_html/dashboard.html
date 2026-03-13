@@ -1512,30 +1512,27 @@
           });
         }
 
-        createChart("chartTrafficLine",
-          document.getElementById("chartTrafficLine"),
-          {
-            type: "line",
-            data: { labels: dayLabels, datasets },
-            options: {
-              responsive: true,
-              plugins: {
-                legend: { labels: { color: "#94a3b8", boxWidth: 12 } },
+        createChart("chartTrafficLine", {
+          type: "line",
+          data: { labels: dayLabels, datasets },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { labels: { color: "#94a3b8", boxWidth: 12 } },
+            },
+            scales: {
+              x: {
+                ticks: { color: "#64748b", maxTicksLimit: 10 },
+                grid: { color: "#1e293b" },
               },
-              scales: {
-                x: {
-                  ticks: { color: "#64748b", maxTicksLimit: 10 },
-                  grid: { color: "#1e293b" },
-                },
-                y: {
-                  ticks: { color: "#64748b" },
-                  grid: { color: "#334155" },
-                  beginAtZero: true,
-                },
+              y: {
+                ticks: { color: "#64748b" },
+                grid: { color: "#334155" },
+                beginAtZero: true,
               },
             },
           },
-        );
+        });
 
         // Browser doughnut
         const browsers = {};
