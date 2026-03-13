@@ -295,11 +295,22 @@ function renderUsers(users) {
       <td style="color:#64748b">${(u.sections_allowed||[]).join(', ') || '—'}</td>
       <td>${fmtDate(u.created_at)}</td>
       <td>
-        <button class="btn-sm" style="font-size:12px;margin-right:6px" onclick="openEditModal(${u.id},'${u.role}',${JSON.stringify(u.sections_allowed||[])})">Edit</button>
-        <button class="btn-danger" onclick="deleteUser(${u.id},'${u.email}')">Delete</button>
+        <button class="btn-sm edit-btn" style="font-size:12px;margin-right:6px"
+          data-id="${u.id}" data-role="${u.role}"
+          data-sections='${JSON.stringify(u.sections_allowed||[])}'>Edit</button>
+        <button class="btn-danger delete-btn" data-id="${u.id}" data-email="${u.email}">Delete</button>
       </td>
     </tr>`).join('') ||
     '<tr><td colspan="6" style="text-align:center;padding:24px;color:#475569">No users found.</td></tr>';
+
+  document.querySelectorAll('.edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openEditModal(btn.dataset.id, btn.dataset.role, JSON.parse(btn.dataset.sections));
+    });
+  });
+  document.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteUser(btn.dataset.id, btn.dataset.email));
+  });
 }
 
 // ── Create user ────────────────────────────────────────────────────────────────
