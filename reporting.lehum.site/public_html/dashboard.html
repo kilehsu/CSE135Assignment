@@ -1046,11 +1046,28 @@
       let activityData = {};
       let exitsSummary = [];
       let transitions = [];
-      let pvChartInst = null;
-      let trafficChartInst = null;
       let compareMode = false;
       let prevPageviews = [];
       let prevErrors = [];
+      
+      // Track all chart instances for cleanup
+      const charts = {};
+      function getChart(canvasId) {
+        if (charts[canvasId]) {
+          charts[canvasId].destroy();
+        }
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return null;
+        const chart = new Chart(canvas, arguments[1]);
+        charts[canvasId] = chart;
+        return chart;
+      }
+      function destroyChart(canvasId) {
+        if (charts[canvasId]) {
+          charts[canvasId].destroy();
+          delete charts[canvasId];
+        }
+      }
 
       // ── Date range helpers ────────────────────────────────────────────────────────
       function getDateRange() {
@@ -1347,8 +1364,8 @@
           if (hr >= 0 && hr < 24) bins[23 - hr].count++;
         });
 
-        if (pvChartInst) pvChartInst.destroy();
-        pvChartInst = new Chart(document.getElementById("chartPageviews"), {
+        destroyChart("chartPageviews");
+        charts["chartPageviews"] = new Chart(document.getElementById("chartPageviews"), {
           type: "bar",
           data: {
             labels: bins.map((b) => b.label),
@@ -1384,6 +1401,7 @@
       }
 
       function renderErrorsDoughnut(canvasId, wrapId, errs) {
+        destroyChart(canvasId);
         const counts = {};
         errs.forEach((e) => {
           const t = e.error_type || "unknown";
@@ -1403,7 +1421,7 @@
           "#34d399",
           "#a78bfa",
         ];
-        new Chart(document.getElementById(canvasId), {
+        charts[canvasId] = new Chart(document.getElementById(canvasId), {
           type: "doughnut",
           data: {
             labels,
@@ -1475,8 +1493,8 @@
           });
         }
 
-        if (trafficChartInst) trafficChartInst.destroy();
-        trafficChartInst = new Chart(
+        destroyChart("chartTrafficLine");
+        charts["chartTrafficLine"] = new Chart(
           document.getElementById("chartTrafficLine"),
           {
             type: "line",
@@ -1518,7 +1536,8 @@
           "#34d399",
           "#a78bfa",
         ];
-        new Chart(document.getElementById("chartBrowsers"), {
+        destroyChart("chartBrowsers");
+        charts["chartBrowsers"] = new Chart(document.getElementById("chartBrowsers"), {
           type: "doughnut",
           data: {
             labels: bLabels,
@@ -1555,7 +1574,8 @@
           else if (w < 1200) devices.Tablet++;
           else devices.Desktop++;
         });
-        new Chart(document.getElementById("chartDevices"), {
+        destroyChart("chartDevices");
+        charts["chartDevices"] = new Chart(document.getElementById("chartDevices"), {
           type: "doughnut",
           data: {
             labels: ["Mobile", "Tablet", "Desktop"],
@@ -1685,7 +1705,8 @@
           const inpCounts = ratings.map(
             (r) => allVitals.filter((v) => v.inp_rating === r).length,
           );
-          new Chart(document.getElementById("chartVitalsRatings"), {
+          destroyChart("chartVitalsRatings");
+          charts["chartVitalsRatings"] = new Chart(document.getElementById("chartVitalsRatings"), {
             type: "bar",
             data: {
               labels: ["LCP", "CLS", "INP"],
@@ -1746,7 +1767,8 @@
           else if (t < 1000) ttfbBuckets[3]++;
           else ttfbBuckets[4]++;
         });
-        new Chart(document.getElementById("chartTtfb"), {
+        destroyChart("chartTtfb");
+        charts["chartTtfb"] = new Chart(document.getElementById("chartTtfb"), {
           type: "bar",
           data: {
             labels: [
@@ -1856,16 +1878,14 @@
       function renderBehavior() {
         // Scroll depth chart
         const scrollData = activityData.scroll_depths || [];
-        console.log("activityData:", activityData);
-        console.log("scrollData:", scrollData);
         const sdLabels = ["25%", "50%", "75%", "100%"];
         const sdCounts = sdLabels.map((l) => {
           const target = l.replace("%", "");
           const d = scrollData.find((r) => String(r.depth) === target);
-          console.log(`Looking for depth=${target}, found:`, d);
           return d ? Number(d.cnt) : 0;
         });
-        new Chart(document.getElementById("chartScrollDepth"), {
+        destroyChart("chartScrollDepth");
+        charts["chartScrollDepth"] = new Chart(document.getElementById("chartScrollDepth"), {
           type: "bar",
           data: {
             labels: sdLabels,
@@ -1905,7 +1925,8 @@
           "#38bdf8",
         ];
         if (kinds.length) {
-          new Chart(document.getElementById("chartEventKinds"), {
+          destroyChart("chartEventKinds");
+          charts["chartEventKinds"] = new Chart(document.getElementById("chartEventKinds"), {
             type: "doughnut",
             data: {
               labels: kinds.map((k) => k.event_kind),
@@ -2096,7 +2117,8 @@
           });
         }
 
-        new Chart(document.getElementById("chartErrorsLine"), {
+        destroyChart("chartErrorsLine");
+        charts["chartErrorsLine"] = new Chart(document.getElementById("chartErrorsLine"), {
           type: "line",
           data: { labels: errLabels, datasets: errLineDatasets },
           options: {
