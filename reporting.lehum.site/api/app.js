@@ -346,7 +346,7 @@ app.get("/api/activity-summary", requireAuth, requireSection("behavior"), async 
 
     const [kinds, scrolls, clicks] = await Promise.all([
       pool.query(`SELECT event_kind, COUNT(*) AS cnt FROM activity_events ${w} GROUP BY event_kind ORDER BY cnt DESC`, params),
-      pool.query(`SELECT COALESCE(event_data->>'depth', event_data->>'milestone') AS depth, COUNT(*) AS cnt FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind IN ('scroll-depth', 'scroll') AND (event_data->>'depth' IS NOT NULL OR event_data->>'milestone' IS NOT NULL) GROUP BY COALESCE(event_data->>'depth', event_data->>'milestone') ORDER BY COALESCE(event_data->>'depth', event_data->>'milestone')::int`, params),
+      pool.query(`SELECT COALESCE(event_data->>'depth', event_data->>'milestone')::text AS depth, COUNT(*) AS cnt FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind = 'scroll-depth' GROUP BY COALESCE(event_data->>'depth', event_data->>'milestone') ORDER BY depth`, params),
       pool.query(`SELECT event_data->>'x' AS x, event_data->>'y' AS y, url FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind IN ('click-enriched', 'click') AND event_data->>'x' IS NOT NULL LIMIT 2000`, params),
     ]);
 
