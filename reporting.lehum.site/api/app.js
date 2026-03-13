@@ -489,6 +489,9 @@ app.post("/api/users", requireAuth, requireRole("super_admin"), async (req, res)
 
 app.put("/api/users/:id", requireAuth, requireRole("super_admin"), async (req, res) => {
   const { email, display_name, password, role, sections_allowed } = req.body;
+  // Prevent super_admin from demoting their own account
+  if (String(req.params.id) === String(req.session.user.id) && role && role !== "super_admin")
+    return res.status(400).json({ error: "Cannot change your own role" });
   try {
     const sets = [];
     const vals = [];
