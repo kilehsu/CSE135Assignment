@@ -60,7 +60,7 @@ This walkthrough covers all three roles, four report categories, analyst comment
 
 ### 8 — PDF Export
 
-1. On the **Errors** tab, click **Save & Export**
+1. On any of the previously seen tabs, click **Save & Export**
 2. Enter a report name when prompted (e.g. "Errors Snapshot")
 3. The system captures chart canvases, generates a landscape PDF with jsPDF, uploads it to the server, and opens the PDF in a new tab (pop-up)
 4. Exported Reports can also be viewed in the Saved Reports in the nav
