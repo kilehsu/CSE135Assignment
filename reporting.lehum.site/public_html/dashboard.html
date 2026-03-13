@@ -1150,6 +1150,10 @@
             return;
           }
           currentUser = await r.json();
+          if (currentUser.role === "viewer") {
+            window.location.href = "/reports";
+            return;
+          }
           document.getElementById("navUser").textContent =
             currentUser.user + " (" + currentUser.role + ")";
           if (currentUser.role === "super_admin")
