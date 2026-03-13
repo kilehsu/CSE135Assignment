@@ -346,8 +346,8 @@ app.get("/api/activity-summary", requireAuth, requireSection("behavior"), async 
 
     const [kinds, scrolls, clicks] = await Promise.all([
       pool.query(`SELECT event_kind, COUNT(*) AS cnt FROM activity_events ${w} GROUP BY event_kind ORDER BY cnt DESC`, params),
-      pool.query(`SELECT event_data->>'depth' AS depth, COUNT(*) AS cnt FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind = 'scroll-depth' GROUP BY event_data->>'depth' ORDER BY (event_data->>'depth')::int`, params),
-      pool.query(`SELECT event_data->>'x' AS x, event_data->>'y' AS y, url FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind = 'click-enriched' LIMIT 2000`, params),
+      pool.query(`SELECT event_data->>'depth' AS depth, COUNT(*) AS cnt FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind IN ('scroll-depth', 'scroll') AND event_data->>'depth' IS NOT NULL GROUP BY event_data->>'depth' ORDER BY (event_data->>'depth')::int`, params),
+      pool.query(`SELECT event_data->>'x' AS x, event_data->>'y' AS y, url FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind IN ('click-enriched', 'click') AND event_data->>'x' IS NOT NULL LIMIT 2000`, params),
     ]);
 
     res.json({
@@ -366,7 +366,7 @@ app.get("/api/heatmap", requireAuth, requireSection("behavior"), async (req, res
   try {
     const { url, from, to } = req.query;
     const params = [];
-    const where = ["event_kind = 'click-enriched'"];
+    const where = ["event_kind IN ('click-enriched', 'click')"];
     if (url)  { params.push(url);  where.push(`url = $${params.length}`); }
     if (from) { params.push(from); where.push(`batch_ts >= $${params.length}`); }
     if (to)   { params.push(to);   where.push(`batch_ts <= $${params.length}`); }
@@ -374,7 +374,7 @@ app.get("/api/heatmap", requireAuth, requireSection("behavior"), async (req, res
       `SELECT event_data->>'x' AS x, event_data->>'y' AS y,
               event_data->>'vw' AS vw, event_data->>'vh' AS vh,
               event_data->>'selector' AS selector
-       FROM activity_events WHERE ${where.join(" AND ")} LIMIT 3000`,
+       FROM activity_events WHERE ${where.join(" AND ")} AND event_data->>'x' IS NOT NULL LIMIT 3000`,
       params,
     );
     // Aggregate by bucketed coords (20px grid)
