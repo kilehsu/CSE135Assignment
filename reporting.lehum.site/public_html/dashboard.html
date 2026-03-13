@@ -1858,7 +1858,8 @@
         const scrollData = activityData.scroll_depths || [];
         const sdLabels = ["25%", "50%", "75%", "100%"];
         const sdCounts = sdLabels.map((l) => {
-          const d = scrollData.find((r) => r.depth === l.replace("%", ""));
+          const target = l.replace("%", "");
+          const d = scrollData.find((r) => String(r.depth) === target);
           return d ? Number(d.cnt) : 0;
         });
         new Chart(document.getElementById("chartScrollDepth"), {
