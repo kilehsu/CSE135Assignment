@@ -45,7 +45,7 @@ All pages include `<noscript>` fallback messaging for users with JavaScript disa
 Four report sections accessible from the tabbed dashboard:
 
 ### Traffic
-- Pageviews over time (daily line chart with optional prior-period comparison)
+- Pageviews over time (daily line chart)
 - Browser and device breakdowns (doughnut charts)
 - Top pages table with percentage of total and filter/search
 - Session Journey Explorer — reconstruct any session's page path with time-on-page
@@ -66,7 +66,7 @@ Four report sections accessible from the tabbed dashboard:
 
 ### Errors
 - Error stat cards by type (JS errors, resource errors, unhandled rejections)
-- Errors over time line chart (with prior-period comparison)
+- Errors over time line chart
 - Error type doughnut chart
 - Searchable error log table with type, message, page, and line number
 
@@ -87,10 +87,25 @@ Each report section has a **Save & Export** button that:
 
 ## Extra Credit Features
 
-- **Click Heatmap** — `GET /api/heatmap?url=` aggregates `click-enriched` events from `activity_events`, rendered as radial-gradient density overlays on a canvas with a color legend
-- **Session Journey Flow** — `GET /api/journey/:sessionId` reconstructs a session's page path from `pageviews` + `page_exits`; displayed as a horizontal step-by-step flow with time-on-page (copy sessionid from the Navigation Timing Table in the Performance Tab and paste it into the Session Jouney Exploere in the Traffic Tab)
-- **Date Range Picker with Period Comparison** — all data endpoints accept `?from=&to=`; enabling "Compare to prior period" overlays a dashed line for the prior equivalent window on time-series charts
-- **Real-Time Live Visitor Counter** — `GET /api/live` SSE endpoint streams active session count (sessions with `last_seen > NOW() - 5 minutes`) every 5 seconds; displayed as a pulsing green indicator in the nav bar
+- **Real-Time Live Visitor Counter** — `GET /api/live` SSE (Server-Sent Events) endpoint streams active session count (sessions with `last_seen > NOW() - 5 minutes`) every 5 seconds; displayed as a pulsing green indicator in the nav bar without any polling or page refresh
+
+- **Click Heatmap** — `GET /api/heatmap?url=` aggregates `click` and `click-enriched` events from `activity_events`, bucketed into a 20px grid and rendered as radial-gradient density overlays on a `<canvas>` element with a red/yellow/green color legend; filterable by URL
+
+- **Session Journey Flow** — `GET /api/journey/:sessionId` reconstructs a full session's page path by joining `pageviews` + `page_exits`; displayed as a horizontal step-by-step flow diagram with page titles, URLs, arrows, and time-on-page per stop; copy any Session ID from the Navigation Timing Table (Performance tab) and paste into the Session Journey Explorer (Traffic tab)
+
+- **Scroll Depth Milestone Tracking** — the collector SDK fires `scroll-depth` activity events at the 25/50/75/100% milestones, stored in `activity_events` and visualized as a bar chart on the Behavior tab; tracking is baked into `initActivityTracking()` so it runs on every instrumented page without needing a separate plugin registration
+
+- **Core Web Vitals (LCP / CLS / INP)** — the collector captures real-user LCP, CLS, and INP via the Web Vitals API, stored in `web_vitals` and shown as color-coded good/needs-improvement/poor rating cards; aggregated into a stacked ratings-mix bar chart and used in the Overview stat card
+
+- **Granular Per-Section Analyst Permissions** — analysts are not just role-gated but section-gated: each analyst has an explicit `sections_allowed` array (any combination of `traffic`, `performance`, `behavior`, `errors`); every API route enforces this with `requireSection()` middleware; the dashboard hides inaccessible tabs; creating or editing a user with a non-analyst role automatically clears `sections_allowed` to `[]`
+
+- **Page Transition Analysis** — `GET /api/transitions` uses a self-join on `pageviews` with a correlated sub-query to find consecutive page pairs per session (no intermediate stops); displayed as a top-20 from→to transition table on the Traffic tab
+
+- **PDF Export with Chart Snapshots** — the Save & Export button captures all Chart.js canvases via `canvas.toDataURL()`, assembles a landscape A4 PDF with jsPDF (styled header, metadata, chart images), uploads it to the server via `POST /api/export-pdf`, auto-saves it as a record in `saved_reports` with a persistent `/exports/` URL, and opens it in a new tab
+
+- **Collector Bot Detection & Sampling** — the SDK checks `navigator.webdriver`, headless UA strings, and missing pointer events to skip automated browsers (`detectBots: true`); also supports a `sampleRate` option (0–1) to record only a fraction of sessions, enforced once per session via `sessionStorage`
+
+- **Date Range Filtering Across All Endpoints** — every data API accepts `?from=ISO&to=ISO` query params; the dashboard date picker appends `T00:00:00Z` / `T23:59:59Z` to ensure full-day coverage; a Reset button snaps back to the default 30-day window
 
 ---
 

@@ -65,12 +65,12 @@ This walkthrough covers all three roles, four report categories, analyst comment
 3. The system captures chart canvases, generates a landscape PDF with jsPDF, uploads it to the server, and opens the PDF in a new tab (pop-up)
 4. Exported Reports can also be viewed in the Saved Reports in the nav
 
-### 9 — Save a Report
+### 9 — View Saved Reports
 
 1. Click **Saved Reports** in the nav (or go to https://reporting.lehum.site/reports)
-2. In the "Save Current Dashboard State as Report" form, name the report "Weekly Performance Review", select **Performance** → click **Save Report**
-3. The report card appears in the grid with section label, name, author, and date
-4. Type a comment under one of the reports
+2. Reports are created only via the **Save & Export** button on the dashboard (Step 8 above) — not manually
+3. Click any report card to open the detail modal — if a PDF was exported, a **Download PDF** button appears alongside any chart snapshots
+4. Type a comment in the comment box at the bottom of the modal and click **Post Comment**
 
 ### 10 — User Management (Super Admin only)
 
@@ -91,19 +91,22 @@ This walkthrough covers all three roles, four report categories, analyst comment
 
 1. Log out
 2. Log in as `viewer@lehum.site` / `viewer123`
-3. You are redirected to `/reports` — the **Dashboard** link is hidden from the nav
-4. Open the "Weekly Performance Review" report saved in Step 9 — the analyst comment should be visible 
+3. You are redirected to `/reports` automatically — the **Dashboard** nav link is not shown
+4. Attempting to visit `/dashboard` directly also redirects to `/reports`
+5. Open any report card — analyst comments are visible but there is no form to add new ones or delete reports
 
 ---
 
-## Known Issues & Features
+## Known Issues & Architecture Notes
 
 - **PDF export chart quality:** The PDF export captures Chart.js canvases as JPEG images via `canvas.toDataURL()`. Quality is set to 0.7 for reasonable file size. Charts may appear slightly pixelated at high zoom compared to the live dashboard.
 
-- **Click heatmap normalization:** Coordinates are normalized against the max X/Y in the dataset rather than a fixed viewport size. Users with very different screen sizes may see shifted density maps.
+- **Click heatmap normalization:** Click coordinates are bucketed on a 20px grid and rendered proportionally. Users with very different screen sizes may see slightly shifted density maps since coordinates are not normalized to a fixed viewport.
 
 - **CORS on the collector:** `collector.lehum.site` only accepts beacons from `https://test.lehum.site`. To instrument a different origin, update the `ALLOWED_ORIGIN` env variable and restart the collector.
 
-- **No pagination on data endpoints:** Routes return up to 500 rows (2000 with explicit limit parameter). Current test-site data volumes are well within this limit; production would need proper pagination.
+- **No pagination on data endpoints:** Routes return up to 500 rows (2000 with explicit limit parameter). Current test-site data volumes are well within this limit; production would need cursor-based pagination.
 
-- **Overview tab not section-gated:** The Overview tab shows aggregate counts regardless of role. This was intentional — it is read-only and shows only summary numbers, not raw data.
+- **Scroll depth data is only populated after the collector.js fix is deployed:** New scroll-depth milestones fire via `pushEvent("scroll-depth", ...)` inline in `initActivityTracking()`. Any data from before that deploy used the old (broken) `track()` path and was silently dropped by the collector server.
+
+- **Sessions table** is restricted to users with `traffic` section access. Viewers and analysts without traffic cannot enumerate sessions via the API.
