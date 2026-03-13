@@ -41,6 +41,11 @@ This is an analytics reporting dashboard at `reporting.lehum.site` with:
 - `/api/heatmap`: Now queries `event_kind IN ('click-enriched', 'click')` and filters for events with x/y coordinates
 - `/api/activity-summary`: Scroll depths query now uses `COALESCE(event_data->>'depth', event_data->>'milestone')` to support both field names
 
+### 6. Scroll Depth Bug Fix (`collector.lehum.site/public_html/collector.js`)
+- **Root cause**: `ScrollTracker` was calling `this._api.track("scroll_depth", { threshold: t })` which sends a standalone beacon with `type: "scroll_depth"`. The collector server has no handler for this type → events were silently dropped and never stored.
+- **Fix**: Exposed `pushEvent` in the extension API (in `use()`). Updated `ScrollTracker` to call `this._api.pushEvent("scroll-depth", { milestone: t, maxDepth })` so events go into the normal activity batch and are stored with `event_kind = 'scroll-depth'` and `event_data->>'milestone'` matching the reporting API query.
+- Events stored as: `event_kind = 'scroll-depth'`, `event_data = { kind: "scroll-depth", milestone: 25|50|75|100, maxDepth: N, timestamp: "..." }`
+
 ## Database Schema Notes
 The `activity_events` table stores behavior data:
 - **Click events**: `event_kind = 'click'`, `event_data` contains `{"x": 560, "y": 294, "kind": "click", "button": 0}`

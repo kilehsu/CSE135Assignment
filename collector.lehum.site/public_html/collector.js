@@ -599,6 +599,7 @@ const collector = (function () {
       extension.init({
         track,
         set,
+        pushEvent,
         getConfig: () => ({ ...config }),
         getSessionId,
       });
@@ -824,7 +825,7 @@ window.ScrollTracker = {
 
     this._visHandler = () => {
       if (document.visibilityState === "hidden") {
-        api.track("scroll_final", { maxDepth: this._maxDepth });
+        api.pushEvent("scroll-final", { maxDepth: this._maxDepth });
       }
     };
     document.addEventListener("visibilitychange", this._visHandler);
@@ -845,8 +846,8 @@ window.ScrollTracker = {
     for (const t of this._thresholds) {
       if (pct >= t && !this._reported[t]) {
         this._reported[t] = true;
-        this._api.track("scroll_depth", {
-          threshold: t,
+        this._api.pushEvent("scroll-depth", {
+          milestone: t,
           maxDepth: this._maxDepth,
         });
       }
