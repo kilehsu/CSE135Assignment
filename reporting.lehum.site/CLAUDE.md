@@ -28,6 +28,7 @@ This is an analytics reporting dashboard at `reporting.lehum.site` with:
 - Dashboard link now visible for all users (was hidden for viewers)
 
 ### 4. Dashboard (`dashboard.html`)
+- **Default date range**: Changed from last 7 days to last 1 month (both on initial load and the Reset button)
 - **Chart Management**: Added `createChart()` and `destroyChart()` helpers to prevent "Canvas already in use" errors when date filters change
 - **Overview tab**: Hidden for analysts (they only see sections they have access to)
 - **Performance tab**: TTFB Distribution, Slowest Pages, and Navigation Timing cards are hidden if user lacks "traffic" permission (these use pageview data)
@@ -70,7 +71,7 @@ ErrorDocument 404 /404.html
 ```
 
 ## Known Issues / TODO
-1. **Date filtering**: Scroll depth data from February 27 won't show with default 7-day filter - need to expand date range
+1. **Date filtering**: Default date range changed from 7 days to 1 month (uses `setMonth(month.getMonth() - 1)` for accurate calendar-month subtraction). Both the initial page load and the "Reset" button now default to the past month.
 2. **Avg Time on Page**: Shows "No exit data" - may need to check if `page_exits` table has data within the date range
 3. **Behavior tab charts**: Only show data if events exist in `activity_events` table with proper fields
 

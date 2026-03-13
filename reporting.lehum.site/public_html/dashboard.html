@@ -1176,13 +1176,14 @@
             if (firstVisibleTab) firstVisibleTab.click();
           }
 
-          // Set default date range (last 7 days)
+          // Set default date range (last 30 days)
           const today = new Date();
-          const week = new Date(today - 7 * 86400000);
+          const month = new Date(today);
+          month.setMonth(month.getMonth() - 1);
           document.getElementById("dateTo").value = today
             .toISOString()
             .split("T")[0];
-          document.getElementById("dateFrom").value = week
+          document.getElementById("dateFrom").value = month
             .toISOString()
             .split("T")[0];
 
@@ -1223,11 +1224,12 @@
         .addEventListener("click", () => loadAll());
       document.getElementById("resetDates").addEventListener("click", () => {
         const today = new Date();
-        const week = new Date(today - 7 * 86400000);
+        const month = new Date(today);
+        month.setMonth(month.getMonth() - 1);
         document.getElementById("dateTo").value = today
           .toISOString()
           .split("T")[0];
-        document.getElementById("dateFrom").value = week
+        document.getElementById("dateFrom").value = month
           .toISOString()
           .split("T")[0];
         document.getElementById("compareToggle").checked = false;
