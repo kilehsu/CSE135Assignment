@@ -70,13 +70,13 @@ Four report sections accessible from the tabbed dashboard:
 - Error type doughnut chart
 - Searchable error log table with type, message, page, and line number
 
-All four sections include an **Analyst Comments** panel where analysts and super admins can post and delete freeform text annotations. Viewers can read comments on saved reports.
+**Analyst Comments**: analysts and super admins can post and delete freeform text annotations under saved reports and Viewers can read these.
 
 ---
 
 ## Export System
 
-Each report section has a **⬇ Save & Export** button that:
+Each report section has a **Save & Export** button that:
 1. Prompts the user for a report name
 2. Captures all Chart.js canvases as JPEG snapshots via `canvas.toDataURL()`
 3. Builds a landscape A4 PDF using jsPDF with a styled header, report metadata, and chart images
@@ -122,7 +122,7 @@ AI (Claude via Cursor) was used for this project:
 
 ---
 
-## Roadmap / Future Work
+## Future Work
 
 - **Scheduled reports** — cron job to automatically save and email weekly reports
 - **Automatic analyst comments** — create automatic comments based on the data

@@ -10,8 +10,6 @@ All accounts are seeded by `migrations/001_auth_reports.sql`.
 | Analyst (all sections) | `analyst@lehum.site` | `analyst123` | Traffic, Performance, Behavior, Errors |
 | Viewer | `viewer@lehum.site` | `viewer123` | Saved Reports only |
 
-> **Fallback:** If seeded credentials fail due to a bcrypt version mismatch, use the `.env` credentials (`admin` / `cse135`) and re-seed via psql.
-
 ---
 
 ## Grader Walkthrough
@@ -62,7 +60,7 @@ This walkthrough covers all three roles, four report categories, analyst comment
 
 ### 8 — PDF Export
 
-1. On the **Errors** tab, click **⬇ Save & Export**
+1. On the **Errors** tab, click **Save & Export**
 2. Enter a report name when prompted (e.g. "Errors Snapshot")
 3. The system captures chart canvases, generates a landscape PDF with jsPDF, uploads it to the server, and opens the PDF in a new tab (pop-up)
 4. Exported Reports can also be viewed in the Saved Reports in the nav
