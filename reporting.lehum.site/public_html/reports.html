@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saved Reports — Analytics</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+    nav {
+      background: #1e293b; border-bottom: 1px solid #334155;
+      padding: 0 24px; height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .nav-left { display: flex; align-items: center; gap: 24px; }
+    .brand    { font-size: 15px; font-weight: 700; color: #f1f5f9; }
+    .brand span { color: #6366f1; }
+    .nav-links a {
+      font-size: 13px; color: #94a3b8; text-decoration: none;
+      padding: 5px 10px; border-radius: 6px; transition: all 0.15s;
+    }
+    .nav-links a:hover, .nav-links a.active { background: #0f172a; color: #f1f5f9; }
+    .nav-right { display: flex; align-items: center; gap: 12px; }
+    .nav-user  { font-size: 13px; color: #64748b; }
+
+    main { max-width: 960px; margin: 0 auto; padding: 28px 24px 48px; }
+
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px; flex-wrap: wrap; gap: 12px;
+    }
+    h1 { font-size: 20px; font-weight: 600; color: #f1f5f9; }
+
+    .card {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 10px; padding: 20px; margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 12px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: #64748b; margin-bottom: 16px;
+    }
+
+    .reports-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+
+    .report-card {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 10px; padding: 18px; cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      text-decoration: none; display: block;
+    }
+    .report-card:hover { border-color: #6366f1; box-shadow: 0 0 0 1px #6366f1; }
+
+    .report-section {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 8px;
+    }
+    .report-section.traffic     { color: #22d3ee; }
+    .report-section.performance { color: #a78bfa; }
+    .report-section.behavior    { color: #4ade80; }
+    .report-section.errors      { color: #f87171; }
+
+    .report-name { font-size: 15px; font-weight: 600; color: #f1f5f9; margin-bottom: 6px; }
+    .report-meta { font-size: 12px; color: #475569; }
+
+    .report-actions {
+      display: flex; gap: 8px; margin-top: 12px;
+    }
+    .btn-sm {
+      background: transparent; border: 1px solid #334155; color: #94a3b8;
+      padding: 4px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-sm:hover { border-color: #6366f1; color: #6366f1; }
+    .btn-primary {
+      background: #6366f1; border: 1px solid #6366f1; color: #fff;
+      padding: 8px 18px; border-radius: 6px; font-size: 13px;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-danger {
+      background: transparent; border: 1px solid #7f1d1d; color: #f87171;
+      padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    }
+    .btn-danger:hover { background: #7f1d1d; }
+
+    /* Save report form (analyst/admin only) */
+    .save-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-group label { font-size: 12px; color: #94a3b8; }
+    .form-group input, .form-group select {
+      background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+      color: #e2e8f0; padding: 7px 10px; font-size: 13px; outline: none;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #6366f1; }
+
+    /* Report detail panel */
+    #reportDetail {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.8); z-index: 200;
+      overflow-y: auto; padding: 24px;
+    }
+    #reportDetailInner {
+      max-width: 860px; margin: 0 auto;
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 12px; padding: 28px;
+    }
+    .detail-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 20px;
+    }
+
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .filter-bar select, .filter-bar input {
+      background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+      color: #e2e8f0; padding: 6px 10px; font-size: 13px; outline: none;
+    }
+    .filter-bar select:focus, .filter-bar input:focus { border-color: #6366f1; }
+
+    .empty-state {
+      text-align: center; padding: 48px 24px; color: #475569;
+    }
+    .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state p { font-size: 14px; line-height: 1.6; }
+
+    .comments-panel { background: #162032; border: 1px solid #1e3a5f; border-radius: 10px; padding: 16px; margin-top: 20px; }
+    .comments-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #3b82f6; margin-bottom: 12px; }
+    .comment-item { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+    .comment-meta { font-size: 11px; color: #475569; margin-bottom: 6px; }
+    .comment-text { font-size: 13px; color: #cbd5e1; line-height: 1.6; white-space: pre-wrap; }
+
+    noscript .msg {
+      background: #1e293b; border: 1px solid #f59e0b; color: #fbbf24;
+      padding: 16px 20px; border-radius: 8px; margin: 24px; font-size: 14px;
+    }
+  </style>
+  <noscript><style>.js-only { display: none !important; }</style></noscript>
+</head>
+<body>
+
+<noscript>
+  <div class="msg" style="background:#1e293b;border:1px solid #f59e0b;color:#fbbf24;padding:16px 20px;border-radius:8px;margin:24px;font-size:14px;">
+    JavaScript is required to use this page.
+  </div>
+</noscript>
+
+<nav class="js-only">
+  <div class="nav-left">
+    <div class="brand">Analytics <span>Reports</span></div>
+    <div class="nav-links">
+      <a href="/dashboard" id="dashLink">Dashboard</a>
+      <a href="/reports" class="active">Saved Reports</a>
+      <a href="/admin" id="adminLink" style="display:none">Admin</a>
+    </div>
+  </div>
+  <div class="nav-right">
+    <span class="nav-user" id="navUser"></span>
+    <button class="btn-sm" id="logoutBtn">Logout</button>
+  </div>
+</nav>
+
+<main class="js-only">
+  <div class="page-header">
+    <h1>Saved Reports</h1>
+  </div>
+
+  <!-- Save new report (analyst/super_admin only) -->
+  <div class="card" id="saveReportCard" style="display:none">
+    <div class="card-title">Save Current Dashboard State as Report</div>
+    <div class="save-form">
+      <div class="form-group">
+        <label>Report Name</label>
+        <input type="text" id="reportName" placeholder="e.g. Weekly Performance Review" style="width:260px">
+      </div>
+      <div class="form-group">
+        <label>Section</label>
+        <select id="reportSection">
+          <option value="traffic">Traffic</option>
+          <option value="performance">Performance</option>
+          <option value="behavior">Behavior</option>
+          <option value="errors">Errors</option>
+        </select>
+      </div>
+      <button class="btn-primary" onclick="saveReport()" style="align-self:flex-end">Save Report</button>
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar">
+    <select id="filterSection">
+      <option value="">All sections</option>
+      <option value="traffic">Traffic</option>
+      <option value="performance">Performance</option>
+      <option value="behavior">Behavior</option>
+      <option value="errors">Errors</option>
+    </select>
+    <input type="text" id="filterSearch" placeholder="Search by name…" style="width:200px">
+  </div>
+
+  <!-- Reports grid -->
+  <div id="reportsGrid" class="reports-grid">
+    <div class="empty-state" style="grid-column:1/-1">
+      <div class="icon">📋</div>
+      <p>Loading reports…</p>
+    </div>
+  </div>
+</main>
+
+<!-- Report Detail Modal -->
+<div id="reportDetail">
+  <div id="reportDetailInner">
+    <div class="detail-header">
+      <div>
+        <div class="report-section" id="detailSection"></div>
+        <h2 style="font-size:18px;font-weight:600;color:#f1f5f9;margin-top:4px" id="detailName"></h2>
+        <div style="font-size:12px;color:#475569;margin-top:4px" id="detailMeta"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <a id="detailExportLink" href="#" target="_blank" class="btn-sm">Open Export</a>
+        <button class="btn-sm" onclick="closeDetail()">Close</button>
+      </div>
+    </div>
+    <!-- Chart snapshots -->
+    <div id="detailSnapshots" style="display:none;margin-top:20px"></div>
+
+    <div class="comments-panel">
+      <div class="comments-title">Analyst Comments</div>
+      <div id="detailComments" style="color:#475569;font-size:13px">Loading…</div>
+      <!-- Add comment form (analysts/super_admin only) -->
+      <div id="detailCommentForm" style="display:none;margin-top:14px">
+        <textarea id="detailCommentText" placeholder="Add an analyst comment…"
+          style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px 12px;font-size:13px;resize:vertical;min-height:72px;outline:none"></textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:6px">
+          <button class="btn-primary" onclick="postDetailComment()" style="font-size:12px;padding:6px 16px">Post Comment</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+let currentUser  = null;
+let allReports   = [];
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    const r = await fetch('/api/auth/me');
+    if (!r.ok) { window.location.href = '/login'; return; }
+    currentUser = await r.json();
+    document.getElementById('navUser').textContent = currentUser.user + ' (' + currentUser.role + ')';
+
+    if (currentUser.role === 'viewer') {
+      document.getElementById('dashLink').style.display = 'none';
+    }
+    if (currentUser.role === 'super_admin') {
+      document.getElementById('adminLink').style.display = '';
+    }
+    if (currentUser.role !== 'viewer') {
+      document.getElementById('saveReportCard').style.display = '';
+    }
+    loadReports();
+  } catch { window.location.href = '/login'; }
+})();
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login';
+});
+
+// ── Load & render reports ──────────────────────────────────────────────────────
+async function loadReports() {
+  try {
+    const r = await fetch('/api/reports');
+    allReports = r.ok ? await r.json() : [];
+    renderReports(allReports);
+  } catch {}
+}
+
+function fmtDate(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function renderReports(reports) {
+  const grid = document.getElementById('reportsGrid');
+  if (!reports.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+      <div class="icon">📋</div>
+      <p>No saved reports yet.<br>${currentUser?.role !== 'viewer' ? 'Use the form above to save a report.' : 'Ask an analyst to save a report for you.'}</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = reports.map(rep => `
+    <div class="report-card" onclick="openDetail(${rep.id})">
+      <div class="report-section ${rep.section}">${rep.section}</div>
+      <div class="report-name">${escHtml(rep.name)}</div>
+      <div class="report-meta">by ${rep.author || 'analyst'} · ${fmtDate(rep.created_at)}</div>
+      <div class="report-actions" onclick="event.stopPropagation()">
+        <button class="btn-sm" onclick="openDetail(${rep.id})">View</button>
+        ${currentUser?.role !== 'viewer' ? `<button class="btn-danger" onclick="deleteReport(${rep.id})">Delete</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+// ── Filter ─────────────────────────────────────────────────────────────────────
+function applyFilter() {
+  const sec = document.getElementById('filterSection').value;
+  const q   = document.getElementById('filterSearch').value.toLowerCase();
+  renderReports(allReports.filter(r =>
+    (!sec || r.section === sec) &&
+    (!q || r.name.toLowerCase().includes(q))
+  ));
+}
+document.getElementById('filterSection').addEventListener('change', applyFilter);
+document.getElementById('filterSearch').addEventListener('input', applyFilter);
+
+// ── Save report ────────────────────────────────────────────────────────────────
+async function saveReport() {
+  const name    = document.getElementById('reportName').value.trim();
+  const section = document.getElementById('reportSection').value;
+  if (!name) { alert('Please enter a report name.'); return; }
+  try {
+    const r = await fetch('/api/reports', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, section, config: {} }),
+    });
+    if (r.ok) {
+      document.getElementById('reportName').value = '';
+      loadReports();
+    }
+  } catch {}
+}
+
+// ── Delete report ──────────────────────────────────────────────────────────────
+async function deleteReport(id) {
+  if (!confirm('Delete this report?')) return;
+  try {
+    await fetch('/api/reports/' + id, { method: 'DELETE' });
+    loadReports();
+  } catch {}
+}
+
+// ── Report detail modal ────────────────────────────────────────────────────────
+let detailReportId = null;
+let detailSection  = null;
+
+async function openDetail(id) {
+  const rep = allReports.find(r => r.id === id);
+  if (!rep) return;
+  detailReportId = rep.id;
+  detailSection  = rep.section;
+
+  document.getElementById('detailSection').className = 'report-section ' + rep.section;
+  document.getElementById('detailSection').textContent = rep.section;
+  document.getElementById('detailName').textContent = rep.name;
+  document.getElementById('detailMeta').textContent =
+    'Saved by ' + (rep.author || 'analyst') + ' on ' + fmtDate(rep.created_at);
+
+  document.getElementById('detailExportLink').style.display = 'none';
+  document.getElementById('reportDetail').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+
+  // Show chart snapshots if saved
+  const snapshotsEl = document.getElementById('detailSnapshots');
+  const cfg = rep.config || {};
+  if (cfg.chart_snapshots && cfg.chart_snapshots.length) {
+    snapshotsEl.style.display = 'block';
+    snapshotsEl.innerHTML = `
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:10px">Chart Snapshots</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
+        ${cfg.chart_snapshots.map(s => `
+          <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px">
+            <div style="font-size:11px;color:#475569;margin-bottom:6px">${escHtml(s.label)}</div>
+            <img src="${s.data}" style="width:100%;border-radius:4px" alt="${escHtml(s.label)}">
+          </div>`).join('')}
+      </div>`;
+  } else {
+    snapshotsEl.style.display = 'none';
+  }
+
+  // Show comment form for analysts
+  const isAnalyst = currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'analyst');
+  document.getElementById('detailCommentForm').style.display = isAnalyst ? 'block' : 'none';
+  document.getElementById('detailCommentText').value = '';
+
+  await loadDetailComments(rep.id, rep.section);
+}
+
+async function loadDetailComments(reportId, section) {
+  try {
+    const r = await fetch('/api/comments?report_id=' + reportId);
+    const comments = r.ok ? await r.json() : [];
+    document.getElementById('detailComments').innerHTML = comments.length
+      ? comments.map(c => `
+          <div class="comment-item">
+            <div class="comment-meta">${escHtml(c.author || 'analyst')} · ${fmtDate(c.created_at)}</div>
+            <div class="comment-text">${escHtml(c.comment_text)}</div>
+          </div>`).join('')
+      : '<p style="color:#475569;font-size:13px;margin-bottom:8px">No analyst comments yet.</p>';
+  } catch {
+    document.getElementById('detailComments').textContent = 'Could not load comments.';
+  }
+}
+
+async function postDetailComment() {
+  const text = document.getElementById('detailCommentText').value.trim();
+  if (!text) return;
+  try {
+    const r = await fetch('/api/comments', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ section: detailSection, report_id: detailReportId, comment_text: text }),
+    });
+    if (r.ok) {
+      document.getElementById('detailCommentText').value = '';
+      await loadDetailComments(detailReportId, detailSection);
+    }
+  } catch {}
+}
+
+function closeDetail() {
+  document.getElementById('reportDetail').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Close on backdrop click
+document.getElementById('reportDetail').addEventListener('click', e => {
+  if (e.target === document.getElementById('reportDetail')) closeDetail();
+});
+
+function escHtml(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

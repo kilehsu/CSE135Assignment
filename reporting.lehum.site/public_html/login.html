@@ -104,11 +104,11 @@
       <p>reporting.lehum.site</p>
     </div>
 
-    <div id="error">Invalid username or password.</div>
+    <div id="error">Invalid email or password.</div>
 
     <form id="loginForm">
-      <label for="username">Username</label>
-      <input type="text" id="username" name="username" autocomplete="username" required>
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" autocomplete="email" required>
 
       <label for="password">Password</label>
       <input type="password" id="password" name="password" autocomplete="current-password" required>
@@ -128,10 +128,11 @@
 
       try {
         const res = await fetch('/api/auth/login', {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            username: document.getElementById('username').value,
+          method:      'POST',
+          headers:     { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body:        JSON.stringify({
+            email:    document.getElementById('email').value,
             password: document.getElementById('password').value,
           }),
         });
