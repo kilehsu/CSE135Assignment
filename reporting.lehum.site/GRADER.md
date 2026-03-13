@@ -55,7 +55,7 @@ This walkthrough covers all three roles, four report categories, analyst comment
 
 ### 7 — Errors Tab
 
-1. Click to any tab the **Errors** tab
+1. Click the **Errors** tab
 2. Observe: error stat cards (Total / JS / Resource / Unhandled Rejections), errors-over-time line chart, error type doughnut, searchable error log table
 
 ### 8 — PDF Export
