@@ -139,7 +139,7 @@
   <div class="nav-left">
     <div class="brand">Analytics <span>Reports</span></div>
     <div class="nav-links">
-      <a href="/dashboard" id="dashLink">Dashboard</a>
+      <a href="/dashboard" id="dashLink" style="display:none">Dashboard</a>
       <a href="/reports" class="active">Saved Reports</a>
       <a href="/admin" id="adminLink" style="display:none">Admin</a>
     </div>
@@ -224,6 +224,9 @@ let allReports   = [];
 
     if (currentUser.role === 'super_admin') {
       document.getElementById('adminLink').style.display = '';
+    }
+    if (currentUser.role !== 'viewer') {
+      document.getElementById('dashLink').style.display = '';
     }
     loadReports();
   } catch { window.location.href = '/login'; }
