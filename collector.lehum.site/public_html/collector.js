@@ -547,11 +547,34 @@ const collector = (function () {
       resetIdle();
     });
 
+    // Scroll depth milestone tracking (25 / 50 / 75 / 100 %)
+    let maxScrollPct = 0;
+    const scrollDepthReported = {};
+    const SCROLL_MILESTONES = [25, 50, 75, 100];
+
+    function measureScrollDepth() {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const docHeight = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight,
+      );
+      if (docHeight <= 0) return;
+      const pct = Math.round(((scrollTop + window.innerHeight) / docHeight) * 100);
+      if (pct > maxScrollPct) maxScrollPct = pct;
+      for (const t of SCROLL_MILESTONES) {
+        if (pct >= t && !scrollDepthReported[t]) {
+          scrollDepthReported[t] = true;
+          pushEvent("scroll-depth", { milestone: t, maxDepth: maxScrollPct });
+        }
+      }
+    }
+
     window.addEventListener("scroll", () => {
       const now = Date.now();
       if (now - lastScroll < 100) return;
       lastScroll = now;
       pushEvent("scroll", { scrollX: window.scrollX, scrollY: window.scrollY });
+      measureScrollDepth();
       resetIdle();
     });
 

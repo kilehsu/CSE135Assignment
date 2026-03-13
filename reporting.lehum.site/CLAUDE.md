@@ -42,9 +42,11 @@ This is an analytics reporting dashboard at `reporting.lehum.site` with:
 - `/api/activity-summary`: Scroll depths query now uses `COALESCE(event_data->>'depth', event_data->>'milestone')` to support both field names
 
 ### 6. Scroll Depth Bug Fix (`collector.lehum.site/public_html/collector.js`)
-- **Root cause**: `ScrollTracker` was calling `this._api.track("scroll_depth", { threshold: t })` which sends a standalone beacon with `type: "scroll_depth"`. The collector server has no handler for this type → events were silently dropped and never stored.
-- **Fix**: Exposed `pushEvent` in the extension API (in `use()`). Updated `ScrollTracker` to call `this._api.pushEvent("scroll-depth", { milestone: t, maxDepth })` so events go into the normal activity batch and are stored with `event_kind = 'scroll-depth'` and `event_data->>'milestone'` matching the reporting API query.
+- **Root cause 1**: `ScrollTracker` was calling `this._api.track("scroll_depth", { threshold: t })` which sends a standalone beacon with `type: "scroll_depth"`. The collector server has no handler for this type → events were silently dropped.
+- **Root cause 2**: No tracked pages call `collector.use(ScrollTracker)`, so the extension was never active. Confirmed by README: "we chose to keep these trackers in the main collector file rather than using a plugin system."
+- **Fix**: Moved scroll depth milestone tracking directly into `initActivityTracking()` (inline, like clicks and basic scroll). Also exposed `pushEvent` in the extension API and fixed `ScrollTracker` to use `pushEvent("scroll-depth", { milestone: t })` for consistency.
 - Events stored as: `event_kind = 'scroll-depth'`, `event_data = { kind: "scroll-depth", milestone: 25|50|75|100, maxDepth: N, timestamp: "..." }`
+- **Deploy**: `scp collector.lehum.site/public_html/collector.js varun@reporting.lehum.site:/var/www/collector.lehum.site/public_html/collector.js`
 
 ## Database Schema Notes
 The `activity_events` table stores behavior data:
