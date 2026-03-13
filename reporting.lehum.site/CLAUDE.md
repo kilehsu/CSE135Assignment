@@ -1,0 +1,107 @@
+# Reporting Site Context - CSE 135 Assignment
+
+## Project Overview
+This is an analytics reporting dashboard at `reporting.lehum.site` with:
+- **Backend**: Node.js/Express API (`/api/app.js`) on port 3002
+- **Frontend**: Static HTML pages in `/public_html/`
+- **Database**: PostgreSQL (`postgresql://cse135:cse135pass@localhost:5432/analytics`)
+- **Proxy**: Apache reverse proxy handles routing to Node.js
+
+## User Roles
+- **super_admin**: Full access to all sections and admin panel
+- **analyst**: Access only to specific sections in `sections_allowed` array (e.g., `["traffic", "performance"]`)
+- **viewer**: Can only see saved reports at `/reports`, redirected there after login
+
+## Recent Changes Made
+
+### 1. Authentication & Authorization
+- `requireRole()` and `requireSection()` now show `403.html` for HTML requests (not just JSON)
+- Login redirects viewers to `/reports`, others to `/dashboard`
+- Added `/403` and `/404` direct routes for testing error pages
+
+### 2. Admin Page (`admin.html`)
+- Removed Edit button for super_admin users in the users table (cleaner UI)
+
+### 3. Reports Page (`reports.html`)
+- Fixed duplicate `cfg` variable declaration that was breaking JS
+- Added PDF download link when `config.pdf_url` exists in saved reports
+- Dashboard link now visible for all users (was hidden for viewers)
+
+### 4. Dashboard (`dashboard.html`)
+- **Chart Management**: Added `createChart()` and `destroyChart()` helpers to prevent "Canvas already in use" errors when date filters change
+- **Overview tab**: Hidden for analysts (they only see sections they have access to)
+- **Performance tab**: TTFB Distribution, Slowest Pages, and Navigation Timing cards are hidden if user lacks "traffic" permission (these use pageview data)
+- **Behavior tab**:
+  - Heatmap API updated to look for both `click` and `click-enriched` events
+  - Scroll depth query updated to use `milestone` field (not `depth`) since that's what the tracking script sends
+  - Fixed string comparison for scroll depth matching
+
+### 5. API Changes (`app.js`)
+- `/api/heatmap`: Now queries `event_kind IN ('click-enriched', 'click')` and filters for events with x/y coordinates
+- `/api/activity-summary`: Scroll depths query now uses `COALESCE(event_data->>'depth', event_data->>'milestone')` to support both field names
+
+## Database Schema Notes
+The `activity_events` table stores behavior data:
+- **Click events**: `event_kind = 'click'`, `event_data` contains `{"x": 560, "y": 294, "kind": "click", "button": 0}`
+- **Scroll events**: `event_kind = 'scroll-depth'`, `event_data` contains `{"milestone": 50, "currentPct": 100}` (note: uses `milestone` not `depth`)
+
+## Apache Config
+Required ProxyPass directives:
+```apache
+ProxyPass        /api        http://127.0.0.1:3002/api
+ProxyPassReverse /api        http://127.0.0.1:3002/api
+ProxyPass        /login      http://127.0.0.1:3002/login
+ProxyPassReverse /login      http://127.0.0.1:3002/login
+ProxyPass        /dashboard  http://127.0.0.1:3002/dashboard
+ProxyPassReverse /dashboard  http://127.0.0.1:3002/dashboard
+ProxyPass        /admin      http://127.0.0.1:3002/admin
+ProxyPassReverse /admin      http://127.0.0.1:3002/admin
+ProxyPass        /reports    http://127.0.0.1:3002/reports
+ProxyPassReverse /reports    http://127.0.0.1:3002/reports
+ProxyPass        /exports    http://127.0.0.1:3002/exports
+ProxyPassReverse /exports    http://127.0.0.1:3002/exports
+ProxyPass        /403        http://127.0.0.1:3002/403
+ProxyPassReverse /403        http://127.0.0.1:3002/403
+ProxyPass        /404        http://127.0.0.1:3002/404
+ProxyPassReverse /404        http://127.0.0.1:3002/404
+
+ErrorDocument 403 /403.html
+ErrorDocument 404 /404.html
+```
+
+## Known Issues / TODO
+1. **Date filtering**: Scroll depth data from February 27 won't show with default 7-day filter - need to expand date range
+2. **Avg Time on Page**: Shows "No exit data" - may need to check if `page_exits` table has data within the date range
+3. **Behavior tab charts**: Only show data if events exist in `activity_events` table with proper fields
+
+## Useful SQL Commands
+```sql
+-- Check click events structure
+SELECT event_kind, event_data FROM activity_events WHERE event_kind LIKE '%click%' LIMIT 5;
+
+-- Check scroll events structure
+SELECT event_kind, event_data FROM activity_events WHERE event_kind = 'scroll-depth' LIMIT 5;
+
+-- Check date ranges for scroll data
+SELECT batch_ts FROM activity_events WHERE event_kind = 'scroll-depth' ORDER BY batch_ts DESC LIMIT 5;
+
+-- See all unique event kinds
+SELECT DISTINCT event_kind FROM activity_events;
+```
+
+## File Structure
+```
+reporting.lehum.site/
+├── api/
+│   ├── app.js          # Main Express server
+│   ├── db.js           # PostgreSQL connection pool
+│   └── .env            # Environment variables (DATABASE_URL, SESSION_SECRET, etc.)
+└── public_html/
+    ├── dashboard.html  # Main analytics dashboard
+    ├── reports.html    # Saved reports viewer
+    ├── admin.html      # User management (super_admin only)
+    ├── login.html      # Login page
+    ├── 403.html        # Forbidden error page
+    ├── 404.html        # Not found error page
+    └── exports/        # Generated PDF/HTML report exports
+```
