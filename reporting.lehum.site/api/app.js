@@ -63,10 +63,14 @@ function requireAuth(req, res, next) {
 
 function requireRole(...roles) {
   return (req, res, next) => {
-    if (!req.session || !req.session.user)
+    if (!req.session || !req.session.user) {
+      if (req.accepts("html")) return res.redirect("/login");
       return res.status(401).json({ error: "Unauthorized" });
-    if (!roles.includes(req.session.user.role))
+    }
+    if (!roles.includes(req.session.user.role)) {
+      if (req.accepts("html")) return res.status(403).sendFile(path.join(PUBLIC_HTML, "403.html"));
       return res.status(403).json({ error: "Forbidden" });
+    }
     return next();
   };
 }
@@ -75,11 +79,14 @@ function requireRole(...roles) {
 // super_admin always passes; viewer always fails.
 function requireSection(section) {
   return (req, res, next) => {
-    if (!req.session || !req.session.user)
+    if (!req.session || !req.session.user) {
+      if (req.accepts("html")) return res.redirect("/login");
       return res.status(401).json({ error: "Unauthorized" });
+    }
     const { role, sections_allowed } = req.session.user;
     if (role === "super_admin") return next();
     if (role === "analyst" && sections_allowed.includes(section)) return next();
+    if (req.accepts("html")) return res.status(403).sendFile(path.join(PUBLIC_HTML, "403.html"));
     return res.status(403).json({ error: "Forbidden" });
   };
 }
@@ -145,6 +152,15 @@ app.get("/admin", requireAuth, requireRole("super_admin"), (_req, res) => {
 
 app.get("/reports", requireAuth, (_req, res) => {
   res.sendFile(path.join(PUBLIC_HTML, "reports.html"));
+});
+
+// Direct error page routes (for testing/direct access)
+app.get("/403", (_req, res) => {
+  res.status(403).sendFile(path.join(PUBLIC_HTML, "403.html"));
+});
+
+app.get("/404", (_req, res) => {
+  res.status(404).sendFile(path.join(PUBLIC_HTML, "404.html"));
 });
 
 // ─── Health ───────────────────────────────────────────────────────────────────

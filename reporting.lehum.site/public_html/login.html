@@ -138,7 +138,9 @@
         });
 
         if (res.ok) {
-          window.location.href = '/dashboard';
+          const data = await res.json();
+          // Redirect viewers to reports, others to dashboard
+          window.location.href = data.role === 'viewer' ? '/reports' : '/dashboard';
         } else {
           error.style.display = 'block';
           btn.textContent = 'Sign in';

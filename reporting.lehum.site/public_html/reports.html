@@ -374,7 +374,6 @@ async function openDetail(id) {
 
   // Show chart snapshots if saved
   const snapshotsEl = document.getElementById('detailSnapshots');
-  const cfg = rep.config || {};
   if (cfg.chart_snapshots && cfg.chart_snapshots.length) {
     snapshotsEl.style.display = 'block';
     snapshotsEl.innerHTML = `
