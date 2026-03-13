@@ -2290,11 +2290,18 @@
               doc.text("No charts available for this section.", margin, y);
             }
 
+            const maxChartH = pageH - margin * 2 - 15;
             for (const snap of chart_snapshots) {
-              const imgH = snap.w > 0
-                ? Math.min((snap.h / snap.w) * usableW, pageH - margin - y - 12)
+              const naturalH = snap.w > 0
+                ? (snap.h / snap.w) * usableW
                 : 60;
-              if (y + imgH + 12 > pageH - margin) { doc.addPage(); y = margin; }
+              const imgH = Math.min(naturalH, maxChartH);
+
+              if (y + imgH + 12 > pageH - margin) {
+                doc.addPage();
+                y = margin;
+              }
+
               doc.setFontSize(9); doc.setTextColor(148, 163, 184);
               doc.text(snap.label, margin, y);
               y += 5;
