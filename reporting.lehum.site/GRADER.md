@@ -2,13 +2,11 @@
 
 ## Credentials
 
-All accounts are seeded by `migrations/001_auth_reports.sql`.
-
-| Role | Email | Password | Access |
-|---|---|---|---|
-| Super Admin | `superadmin@lehum.site` | `admin123` | Full access, user management |
-| Analyst (all sections) | `analyst@lehum.site` | `analyst123` | Traffic, Performance, Behavior, Errors |
-| Viewer | `viewer@lehum.site` | `viewer123` | Saved Reports only |
+| Role                   | Email                   | Password     | Access                                 |
+| ---------------------- | ----------------------- | ------------ | -------------------------------------- |
+| Super Admin            | `superadmin@lehum.site` | `admin123`   | Full access, user management           |
+| Analyst (all sections) | `analyst@lehum.site`    | `analyst123` | Traffic, Performance, Behavior, Errors |
+| Viewer                 | `viewer@lehum.site`     | `viewer123`  | Saved Reports only                     |
 
 ---
 
@@ -33,7 +31,7 @@ This walkthrough covers all three roles, four report categories, analyst comment
 1. Click the **Performance** tab
 2. Observe: Web Vitals cards (LCP / CLS / INP with color-coded ratings), TTFB histogram, vitals ratings mix stacked bar, slowest pages table, navigation timing table with search
 3. Scroll down to the Navigation Timing Table and click on the Session ID (in purple) to copy it (will use later)
-   
+
 ### 4 — Analyst Comments
 
 1. Still on **Performance**, scroll to the **Analyst Comments** panel at the bottom
