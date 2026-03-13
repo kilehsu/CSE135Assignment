@@ -295,9 +295,9 @@ function renderUsers(users) {
       <td style="color:#64748b">${(u.sections_allowed||[]).join(', ') || '—'}</td>
       <td>${fmtDate(u.created_at)}</td>
       <td>
-        <button class="btn-sm edit-btn" style="font-size:12px;margin-right:6px"
+        ${u.role !== 'super_admin' ? `<button class="btn-sm edit-btn" style="font-size:12px;margin-right:6px"
           data-id="${u.id}" data-role="${u.role}"
-          data-sections='${JSON.stringify(u.sections_allowed||[])}'>Edit</button>
+          data-sections='${JSON.stringify(u.sections_allowed||[])}'>Edit</button>` : ''}
         <button class="btn-danger delete-btn" data-id="${u.id}" data-email="${u.email}">Delete</button>
       </td>
     </tr>`).join('') ||

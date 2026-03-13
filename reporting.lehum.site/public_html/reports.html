@@ -253,9 +253,7 @@ let allReports   = [];
     currentUser = await r.json();
     document.getElementById('navUser').textContent = currentUser.user + ' (' + currentUser.role + ')';
 
-    if (currentUser.role === 'viewer') {
-      document.getElementById('dashLink').style.display = 'none';
-    }
+    // Viewers can access dashboard (redirects to /reports anyway)
     if (currentUser.role === 'super_admin') {
       document.getElementById('adminLink').style.display = '';
     }
@@ -361,7 +359,16 @@ async function openDetail(id) {
   document.getElementById('detailMeta').textContent =
     'Saved by ' + (rep.author || 'analyst') + ' on ' + fmtDate(rep.created_at);
 
-  document.getElementById('detailExportLink').style.display = 'none';
+  // Show PDF export link if available
+  const cfg = rep.config || {};
+  const exportLink = document.getElementById('detailExportLink');
+  if (cfg.pdf_url) {
+    exportLink.href = cfg.pdf_url;
+    exportLink.style.display = '';
+    exportLink.textContent = 'Download PDF';
+  } else {
+    exportLink.style.display = 'none';
+  }
   document.getElementById('reportDetail').style.display = 'block';
   document.body.style.overflow = 'hidden';
 
