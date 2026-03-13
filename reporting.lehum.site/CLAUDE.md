@@ -18,6 +18,11 @@ This is an analytics reporting dashboard at `reporting.lehum.site` with:
 - `requireRole()` and `requireSection()` now show `403.html` for HTML requests (not just JSON)
 - Login redirects viewers to `/reports`, others to `/dashboard`
 - Added `/403` and `/404` direct routes for testing error pages
+- `POST /api/users`: validates role is one of `super_admin|analyst|viewer`, enforces 8-char min password, clears `sections_allowed` for non-analyst roles
+- `PUT /api/users/:id`: same role + password validation; always recomputes `sections_allowed` based on effective role (non-analysts always get `[]`)
+- `DELETE /api/comments/:id`: analysts can only delete their own comments; super_admin can delete any
+- `GET /api/sessions`: now requires `traffic` section (was open to all authenticated users)
+- `admin.html` edit modal: sends `sections_allowed: []` for non-analyst roles; password field has `minlength="8"`
 
 ### 2. Admin Page (`admin.html`)
 - Removed Edit button for super_admin users in the users table (cleaner UI)
@@ -26,11 +31,12 @@ This is an analytics reporting dashboard at `reporting.lehum.site` with:
 - Fixed duplicate `cfg` variable declaration that was breaking JS
 - Added PDF download link when `config.pdf_url` exists in saved reports
 - Dashboard link now visible for all users (was hidden for viewers)
+- Removed "Save Current Dashboard State as Report" manual form — reports are now only created via the export flow in the dashboard (PDF export saves to `saved_reports` automatically)
 
 ### 4. Dashboard (`dashboard.html`)
 - **Default date range**: Changed from last 7 days to last 1 month (both on initial load and the Reset button)
 - **Chart Management**: Added `createChart()` and `destroyChart()` helpers to prevent "Canvas already in use" errors when date filters change
-- **Overview tab**: Hidden for analysts (they only see sections they have access to)
+- **Overview tab**: Hidden for analysts — fixed by using direct DOM manipulation instead of `click()` to switch to the first allowed section tab (avoids event-bubbling race conditions). If analyst has no sections at all, overview panel is also hidden.
 - **Performance tab**: TTFB Distribution, Slowest Pages, and Navigation Timing cards are hidden if user lacks "traffic" permission (these use pageview data)
 - **Behavior tab**:
   - Heatmap API updated to look for both `click` and `click-enriched` events

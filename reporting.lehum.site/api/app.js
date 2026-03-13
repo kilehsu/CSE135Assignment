@@ -302,7 +302,7 @@ sessionsRouter.delete("/:id", async (req, res) => {
     res.json({ deleted: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-app.use("/api/sessions", requireAuth, sessionsRouter);
+app.use("/api/sessions", requireAuth, requireSection("traffic"), sessionsRouter);
 
 app.use("/api/pageviews", requireAuth, requireSection("traffic"), crud(express.Router(), "pageviews", [
   "session_id","url","page","referrer","entered_at","user_agent","language",
@@ -489,12 +489,18 @@ app.post("/api/users", requireAuth, requireRole("super_admin"), async (req, res)
   const { email, display_name, password, role, sections_allowed = [] } = req.body;
   if (!email || !password || !role)
     return res.status(400).json({ error: "email, password, role required" });
+  if (!["super_admin", "analyst", "viewer"].includes(role))
+    return res.status(400).json({ error: "Invalid role" });
+  if (password.length < 8)
+    return res.status(400).json({ error: "Password must be at least 8 characters" });
+  // Only analysts get sections; clear for all other roles
+  const allowedSections = role === "analyst" ? (sections_allowed || []) : [];
   try {
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await pool.query(
       `INSERT INTO app_users (email, display_name, password_hash, role, sections_allowed, created_by)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, email, display_name, role, sections_allowed, created_at`,
-      [email, display_name || null, hash, role, sections_allowed, req.session.user.id],
+      [email, display_name || null, hash, role, allowedSections, req.session.user.id],
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -508,13 +514,27 @@ app.put("/api/users/:id", requireAuth, requireRole("super_admin"), async (req, r
   // Prevent super_admin from demoting their own account
   if (String(req.params.id) === String(req.session.user.id) && role && role !== "super_admin")
     return res.status(400).json({ error: "Cannot change your own role" });
+  if (role && !["super_admin", "analyst", "viewer"].includes(role))
+    return res.status(400).json({ error: "Invalid role" });
+  if (password && password.length < 8)
+    return res.status(400).json({ error: "Password must be at least 8 characters" });
   try {
     const sets = [];
     const vals = [];
-    if (email)            { vals.push(email);            sets.push(`email = $${vals.length}`); }
-    if (display_name)     { vals.push(display_name);     sets.push(`display_name = $${vals.length}`); }
-    if (role)             { vals.push(role);             sets.push(`role = $${vals.length}`); }
-    if (sections_allowed) { vals.push(sections_allowed); sets.push(`sections_allowed = $${vals.length}`); }
+    if (email)        { vals.push(email);        sets.push(`email = $${vals.length}`); }
+    if (display_name) { vals.push(display_name); sets.push(`display_name = $${vals.length}`); }
+    if (role)         { vals.push(role);         sets.push(`role = $${vals.length}`); }
+    // When role is being set, always update sections_allowed accordingly
+    if (role || sections_allowed !== undefined) {
+      const effectiveRole = role || null; // will use DB role if not changing
+      // If role is provided: only analysts get sections; others get []
+      // If only sections_allowed is provided: trust the value (role check stays in DB)
+      const effectiveSections = effectiveRole
+        ? (effectiveRole === "analyst" ? (sections_allowed || []) : [])
+        : (sections_allowed || []);
+      vals.push(effectiveSections);
+      sets.push(`sections_allowed = $${vals.length}`);
+    }
     if (password) {
       const hash = await bcrypt.hash(password, 12);
       vals.push(hash);
@@ -640,8 +660,14 @@ app.put("/api/comments/:id", requireAuth, requireRole("super_admin", "analyst"),
 
 app.delete("/api/comments/:id", requireAuth, requireRole("super_admin", "analyst"), async (req, res) => {
   try {
-    const { rowCount } = await pool.query("DELETE FROM analyst_comments WHERE id = $1", [req.params.id]);
-    if (!rowCount) return res.status(404).json({ error: "Not found" });
+    // super_admin can delete any comment; analysts can only delete their own
+    const { role, id: userId } = req.session.user;
+    const query = role === "super_admin"
+      ? "DELETE FROM analyst_comments WHERE id = $1"
+      : "DELETE FROM analyst_comments WHERE id = $1 AND author_id = $2";
+    const params = role === "super_admin" ? [req.params.id] : [req.params.id, userId];
+    const { rowCount } = await pool.query(query, params);
+    if (!rowCount) return res.status(404).json({ error: "Not found or not yours" });
     res.json({ deleted: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

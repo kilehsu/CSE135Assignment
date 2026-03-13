@@ -85,16 +85,6 @@
     }
     .btn-danger:hover { background: #7f1d1d; }
 
-    /* Save report form (analyst/admin only) */
-    .save-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
-    .form-group { display: flex; flex-direction: column; gap: 5px; }
-    .form-group label { font-size: 12px; color: #94a3b8; }
-    .form-group input, .form-group select {
-      background: #0f172a; border: 1px solid #334155; border-radius: 6px;
-      color: #e2e8f0; padding: 7px 10px; font-size: 13px; outline: none;
-    }
-    .form-group input:focus, .form-group select:focus { border-color: #6366f1; }
-
     /* Report detail panel */
     #reportDetail {
       display: none; position: fixed; inset: 0;
@@ -165,27 +155,6 @@
     <h1>Saved Reports</h1>
   </div>
 
-  <!-- Save new report (analyst/super_admin only) -->
-  <div class="card" id="saveReportCard" style="display:none">
-    <div class="card-title">Save Current Dashboard State as Report</div>
-    <div class="save-form">
-      <div class="form-group">
-        <label>Report Name</label>
-        <input type="text" id="reportName" placeholder="e.g. Weekly Performance Review" style="width:260px">
-      </div>
-      <div class="form-group">
-        <label>Section</label>
-        <select id="reportSection">
-          <option value="traffic">Traffic</option>
-          <option value="performance">Performance</option>
-          <option value="behavior">Behavior</option>
-          <option value="errors">Errors</option>
-        </select>
-      </div>
-      <button class="btn-primary" onclick="saveReport()" style="align-self:flex-end">Save Report</button>
-    </div>
-  </div>
-
   <!-- Filter bar -->
   <div class="filter-bar">
     <select id="filterSection">
@@ -253,12 +222,8 @@ let allReports   = [];
     currentUser = await r.json();
     document.getElementById('navUser').textContent = currentUser.user + ' (' + currentUser.role + ')';
 
-    // Viewers can access dashboard (redirects to /reports anyway)
     if (currentUser.role === 'super_admin') {
       document.getElementById('adminLink').style.display = '';
-    }
-    if (currentUser.role !== 'viewer') {
-      document.getElementById('saveReportCard').style.display = '';
     }
     loadReports();
   } catch { window.location.href = '/login'; }
@@ -288,7 +253,7 @@ function renderReports(reports) {
   if (!reports.length) {
     grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
       <div class="icon">📋</div>
-      <p>No saved reports yet.<br>${currentUser?.role !== 'viewer' ? 'Use the form above to save a report.' : 'Ask an analyst to save a report for you.'}</p>
+      <p>No saved reports yet.<br>Reports are created when exporting a section from the dashboard.</p>
     </div>`;
     return;
   }
@@ -316,23 +281,6 @@ function applyFilter() {
 }
 document.getElementById('filterSection').addEventListener('change', applyFilter);
 document.getElementById('filterSearch').addEventListener('input', applyFilter);
-
-// ── Save report ────────────────────────────────────────────────────────────────
-async function saveReport() {
-  const name    = document.getElementById('reportName').value.trim();
-  const section = document.getElementById('reportSection').value;
-  if (!name) { alert('Please enter a report name.'); return; }
-  try {
-    const r = await fetch('/api/reports', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, section, config: {} }),
-    });
-    if (r.ok) {
-      document.getElementById('reportName').value = '';
-      loadReports();
-    }
-  } catch {}
-}
 
 // ── Delete report ──────────────────────────────────────────────────────────────
 async function deleteReport(id) {

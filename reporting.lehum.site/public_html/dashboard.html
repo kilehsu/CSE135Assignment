@@ -1171,9 +1171,19 @@
           if (currentUser.role === "analyst") {
             const overviewBtn = document.querySelector('.tab-btn[data-tab="overview"]');
             if (overviewBtn) overviewBtn.hidden = true;
-            // Switch to first visible tab
+
+            // Directly activate the first allowed section tab without relying on click()
             const firstVisibleTab = document.querySelector('.tab-btn:not([hidden])');
-            if (firstVisibleTab) firstVisibleTab.click();
+            if (firstVisibleTab) {
+              document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+              document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+              firstVisibleTab.classList.add("active");
+              const targetPanel = document.getElementById("tab-" + firstVisibleTab.dataset.tab);
+              if (targetPanel) targetPanel.classList.add("active");
+            } else {
+              // Analyst has no sections — hide the overview panel too
+              document.querySelector(".tab-panel.active")?.classList.remove("active");
+            }
           }
 
           // Set default date range (last 30 days)
