@@ -1856,10 +1856,13 @@
       function renderBehavior() {
         // Scroll depth chart
         const scrollData = activityData.scroll_depths || [];
+        console.log("activityData:", activityData);
+        console.log("scrollData:", scrollData);
         const sdLabels = ["25%", "50%", "75%", "100%"];
         const sdCounts = sdLabels.map((l) => {
           const target = l.replace("%", "");
           const d = scrollData.find((r) => String(r.depth) === target);
+          console.log(`Looking for depth=${target}, found:`, d);
           return d ? Number(d.cnt) : 0;
         });
         new Chart(document.getElementById("chartScrollDepth"), {
