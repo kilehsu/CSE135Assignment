@@ -1,1317 +1,2331 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Analytics Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f172a; color: #e2e8f0; min-height: 100vh;
-    }
-
-    /* ── Nav ── */
-    nav {
-      background: #1e293b; border-bottom: 1px solid #334155;
-      padding: 0 24px; height: 56px;
-      display: flex; align-items: center; justify-content: space-between;
-      position: sticky; top: 0; z-index: 100;
-    }
-    .nav-left  { display: flex; align-items: center; gap: 24px; }
-    .brand     { font-size: 15px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px; white-space: nowrap; }
-    .brand span { color: #6366f1; }
-    .nav-links  { display: flex; gap: 4px; }
-    .nav-links a {
-      font-size: 13px; color: #94a3b8; text-decoration: none;
-      padding: 5px 10px; border-radius: 6px; transition: all 0.15s;
-    }
-    .nav-links a:hover, .nav-links a.active { background: #0f172a; color: #f1f5f9; }
-    .nav-right { display: flex; align-items: center; gap: 12px; }
-    .live-badge {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 12px; color: #4ade80;
-    }
-    .live-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #4ade80; animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%,100% { opacity: 1; } 50% { opacity: 0.3; }
-    }
-    .nav-user  { font-size: 13px; color: #64748b; }
-    .btn-sm {
-      background: transparent; border: 1px solid #334155; color: #94a3b8;
-      padding: 5px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
-      transition: all 0.15s; text-decoration: none; display: inline-block;
-    }
-    .btn-sm:hover { border-color: #6366f1; color: #6366f1; }
-    .btn-primary {
-      background: #6366f1; border: 1px solid #6366f1; color: #fff;
-      padding: 6px 14px; border-radius: 6px; font-size: 13px;
-      cursor: pointer; transition: background 0.15s;
-    }
-    .btn-primary:hover { background: #4f46e5; border-color: #4f46e5; }
-
-    /* ── Date range bar ── */
-    .date-bar {
-      background: #1e293b; border-bottom: 1px solid #334155;
-      padding: 8px 24px; display: flex; align-items: center; gap: 12px;
-      flex-wrap: wrap;
-    }
-    .date-bar label { font-size: 12px; color: #64748b; }
-    .date-bar input[type=date] {
-      background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
-      padding: 4px 8px; border-radius: 6px; font-size: 12px; cursor: pointer;
-    }
-    .date-bar input[type=date]:focus { outline: none; border-color: #6366f1; }
-    .compare-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; }
-    .compare-toggle input { cursor: pointer; accent-color: #6366f1; }
-    #applyDates { margin-left: 4px; }
-
-    /* ── Tabs ── */
-    .tabs {
-      display: flex; gap: 2px; padding: 16px 24px 0;
-      border-bottom: 1px solid #334155; background: #0f172a;
-    }
-    .tab-btn {
-      background: transparent; border: none; color: #64748b;
-      padding: 8px 16px; font-size: 13px; cursor: pointer; border-radius: 6px 6px 0 0;
-      border-bottom: 2px solid transparent; margin-bottom: -1px;
-      transition: all 0.15s;
-    }
-    .tab-btn:hover  { color: #e2e8f0; }
-    .tab-btn.active { color: #6366f1; border-bottom-color: #6366f1; background: #1e293b; }
-    .tab-btn[hidden] { display: none; }
-
-    /* ── Main layout ── */
-    main { max-width: 1280px; margin: 0 auto; padding: 24px 24px 48px; }
-
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-
-    /* ── Stat cards ── */
-    .stats {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 12px; margin-bottom: 24px;
-    }
-    .stat-card {
-      background: #1e293b; border: 1px solid #334155; border-radius: 10px;
-      padding: 16px 18px;
-    }
-    .stat-card .label { font-size: 11px; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
-    .stat-card .value { font-size: 28px; font-weight: 700; color: #f1f5f9; }
-    .stat-card .value.accent { color: #6366f1; }
-
-    /* ── Cards ── */
-    .card {
-      background: #1e293b; border: 1px solid #334155;
-      border-radius: 10px; padding: 20px; margin-bottom: 16px;
-    }
-    .card-title {
-      font-size: 12px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.08em; color: #64748b; margin-bottom: 16px;
-    }
-    .card-header {
-      display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
-    }
-    .card-header .card-title { margin-bottom: 0; }
-    .charts-2col {
-      display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px;
-    }
-    @media (max-width: 768px) { .charts-2col { grid-template-columns: 1fr; } }
-
-    /* ── Tables ── */
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    thead th {
-      background: #0f172a; color: #64748b; font-weight: 600;
-      text-align: left; padding: 9px 12px; white-space: nowrap;
-      border-bottom: 1px solid #334155;
-    }
-    tbody tr { border-bottom: 1px solid #1a2744; transition: background 0.1s; }
-    tbody tr:hover { background: #263347; }
-    tbody td { padding: 9px 12px; color: #cbd5e1; white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
-    td.mono { font-family: "SF Mono","Fira Code",monospace; font-size: 11px; }
-
-    .badge {
-      display: inline-block; padding: 2px 7px; border-radius: 99px;
-      font-size: 11px; font-weight: 600;
-    }
-    .badge-good  { background: #052e16; color: #4ade80; }
-    .badge-ok    { background: #1c1917; color: #fbbf24; }
-    .badge-slow  { background: #450a0a; color: #f87171; }
-    .badge-blue  { background: #1e1b4b; color: #818cf8; }
-
-    /* ── Search ── */
-    .search-input {
-      background: #0f172a; border: 1px solid #334155; border-radius: 6px;
-      padding: 6px 12px; font-size: 13px; color: #e2e8f0; outline: none; width: 200px;
-    }
-    .search-input:focus { border-color: #6366f1; }
-
-    /* ── Analyst comments panel ── */
-    .comments-panel {
-      background: #162032; border: 1px solid #1e3a5f;
-      border-radius: 10px; padding: 16px; margin-top: 16px;
-    }
-    .comments-title {
-      font-size: 12px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.08em; color: #3b82f6; margin-bottom: 12px;
-    }
-    .comment-item {
-      background: #1e293b; border: 1px solid #334155; border-radius: 8px;
-      padding: 12px 14px; margin-bottom: 8px;
-    }
-    .comment-meta { font-size: 11px; color: #475569; margin-bottom: 6px; }
-    .comment-text { font-size: 13px; color: #cbd5e1; line-height: 1.6; white-space: pre-wrap; }
-    .comment-actions { display: flex; gap: 8px; margin-top: 8px; }
-    .comment-actions button {
-      background: none; border: none; color: #475569; font-size: 11px;
-      cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: color 0.15s;
-    }
-    .comment-actions button:hover { color: #94a3b8; }
-    .comment-form { margin-top: 12px; }
-    .comment-form textarea {
-      width: 100%; background: #0f172a; border: 1px solid #334155;
-      border-radius: 6px; color: #e2e8f0; font-size: 13px; padding: 10px 12px;
-      resize: vertical; min-height: 80px; font-family: inherit;
-    }
-    .comment-form textarea:focus { outline: none; border-color: #3b82f6; }
-    .comment-form-footer { display: flex; justify-content: flex-end; margin-top: 8px; gap: 8px; }
-
-    /* ── Export button ── */
-    .export-btn {
-      background: transparent; border: 1px solid #334155; color: #94a3b8;
-      padding: 5px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
-      transition: all 0.15s; display: inline-flex; align-items: center; gap: 5px;
-    }
-    .export-btn:hover { border-color: #22d3ee; color: #22d3ee; }
-
-    /* ── Heatmap canvas ── */
-    #heatmapWrap {
-      position: relative; background: #0f172a; border-radius: 8px;
-      overflow: hidden; min-height: 300px; display: flex; align-items: center; justify-content: center;
-    }
-    #heatmapCanvas { position: absolute; top: 0; left: 0; border-radius: 8px; }
-    #heatmapMsg { color: #475569; font-size: 13px; }
-
-    /* ── Journey flow ── */
-    .journey-steps {
-      display: flex; align-items: center; flex-wrap: wrap; gap: 0; margin-top: 8px;
-    }
-    .journey-step {
-      background: #1e293b; border: 1px solid #334155; border-radius: 8px;
-      padding: 8px 12px; font-size: 12px; min-width: 90px; text-align: center;
-    }
-    .journey-step .step-page { color: #818cf8; font-weight: 600; }
-    .journey-step .step-time { color: #475569; font-size: 11px; margin-top: 2px; }
-    .journey-arrow { color: #334155; font-size: 18px; padding: 0 4px; }
-
-    /* ── Vitals grid ── */
-    .vitals-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px;
-    }
-    @media (max-width: 600px) { .vitals-grid { grid-template-columns: 1fr; } }
-    .vital-card {
-      background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 14px;
-      text-align: center;
-    }
-    .vital-card .v-label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
-    .vital-card .v-value { font-size: 26px; font-weight: 700; color: #f1f5f9; }
-    .vital-card .v-rating { font-size: 11px; margin-top: 4px; }
-
-    #loading { text-align: center; padding: 40px; color: #475569; font-size: 14px; }
-
-    noscript .noscript-msg {
-      background: #1e293b; border: 1px solid #f59e0b; color: #fbbf24;
-      padding: 16px 20px; border-radius: 8px; margin: 24px; font-size: 14px;
-    }
-  </style>
-  <noscript>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Analytics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <style>
-      .js-only { display: none !important; }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        min-height: 100vh;
+      }
+
+      /* ── Nav ── */
+      nav {
+        background: #1e293b;
+        border-bottom: 1px solid #334155;
+        padding: 0 24px;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+      .nav-left {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+      .brand {
+        font-size: 15px;
+        font-weight: 700;
+        color: #f1f5f9;
+        letter-spacing: -0.3px;
+        white-space: nowrap;
+      }
+      .brand span {
+        color: #6366f1;
+      }
+      .nav-links {
+        display: flex;
+        gap: 4px;
+      }
+      .nav-links a {
+        font-size: 13px;
+        color: #94a3b8;
+        text-decoration: none;
+        padding: 5px 10px;
+        border-radius: 6px;
+        transition: all 0.15s;
+      }
+      .nav-links a:hover,
+      .nav-links a.active {
+        background: #0f172a;
+        color: #f1f5f9;
+      }
+      .nav-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .live-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #4ade80;
+      }
+      .live-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4ade80;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+      .nav-user {
+        font-size: 13px;
+        color: #64748b;
+      }
+      .btn-sm {
+        background: transparent;
+        border: 1px solid #334155;
+        color: #94a3b8;
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-decoration: none;
+        display: inline-block;
+      }
+      .btn-sm:hover {
+        border-color: #6366f1;
+        color: #6366f1;
+      }
+      .btn-primary {
+        background: #6366f1;
+        border: 1px solid #6366f1;
+        color: #fff;
+        padding: 6px 14px;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .btn-primary:hover {
+        background: #4f46e5;
+        border-color: #4f46e5;
+      }
+
+      /* ── Date range bar ── */
+      .date-bar {
+        background: #1e293b;
+        border-bottom: 1px solid #334155;
+        padding: 8px 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .date-bar label {
+        font-size: 12px;
+        color: #64748b;
+      }
+      .date-bar input[type="date"] {
+        background: #0f172a;
+        border: 1px solid #334155;
+        color: #e2e8f0;
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .date-bar input[type="date"]:focus {
+        outline: none;
+        border-color: #6366f1;
+      }
+      .compare-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #64748b;
+      }
+      .compare-toggle input {
+        cursor: pointer;
+        accent-color: #6366f1;
+      }
+      #applyDates {
+        margin-left: 4px;
+      }
+
+      /* ── Tabs ── */
+      .tabs {
+        display: flex;
+        gap: 2px;
+        padding: 16px 24px 0;
+        border-bottom: 1px solid #334155;
+        background: #0f172a;
+      }
+      .tab-btn {
+        background: transparent;
+        border: none;
+        color: #64748b;
+        padding: 8px 16px;
+        font-size: 13px;
+        cursor: pointer;
+        border-radius: 6px 6px 0 0;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        transition: all 0.15s;
+      }
+      .tab-btn:hover {
+        color: #e2e8f0;
+      }
+      .tab-btn.active {
+        color: #6366f1;
+        border-bottom-color: #6366f1;
+        background: #1e293b;
+      }
+      .tab-btn[hidden] {
+        display: none;
+      }
+
+      /* ── Main layout ── */
+      main {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 24px 24px 48px;
+      }
+
+      .tab-panel {
+        display: none;
+      }
+      .tab-panel.active {
+        display: block;
+      }
+
+      /* ── Stat cards ── */
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+      .stat-card {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 16px 18px;
+      }
+      .stat-card .label {
+        font-size: 11px;
+        color: #64748b;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .stat-card .value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #f1f5f9;
+      }
+      .stat-card .value.accent {
+        color: #6366f1;
+      }
+
+      /* ── Cards ── */
+      .card {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+      .card-title {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+        margin-bottom: 16px;
+      }
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+      .card-header .card-title {
+        margin-bottom: 0;
+      }
+      .charts-2col {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      @media (max-width: 768px) {
+        .charts-2col {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* ── Tables ── */
+      .table-wrap {
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      thead th {
+        background: #0f172a;
+        color: #64748b;
+        font-weight: 600;
+        text-align: left;
+        padding: 9px 12px;
+        white-space: nowrap;
+        border-bottom: 1px solid #334155;
+      }
+      tbody tr {
+        border-bottom: 1px solid #1a2744;
+        transition: background 0.1s;
+      }
+      tbody tr:hover {
+        background: #263347;
+      }
+      tbody td {
+        padding: 9px 12px;
+        color: #cbd5e1;
+        white-space: nowrap;
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      td.mono {
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 11px;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 99px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .badge-good {
+        background: #052e16;
+        color: #4ade80;
+      }
+      .badge-ok {
+        background: #1c1917;
+        color: #fbbf24;
+      }
+      .badge-slow {
+        background: #450a0a;
+        color: #f87171;
+      }
+      .badge-blue {
+        background: #1e1b4b;
+        color: #818cf8;
+      }
+
+      /* ── Search ── */
+      .search-input {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 13px;
+        color: #e2e8f0;
+        outline: none;
+        width: 200px;
+      }
+      .search-input:focus {
+        border-color: #6366f1;
+      }
+
+      /* ── Analyst comments panel ── */
+      .comments-panel {
+        background: #162032;
+        border: 1px solid #1e3a5f;
+        border-radius: 10px;
+        padding: 16px;
+        margin-top: 16px;
+      }
+      .comments-title {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #3b82f6;
+        margin-bottom: 12px;
+      }
+      .comment-item {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 8px;
+      }
+      .comment-meta {
+        font-size: 11px;
+        color: #475569;
+        margin-bottom: 6px;
+      }
+      .comment-text {
+        font-size: 13px;
+        color: #cbd5e1;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+      .comment-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .comment-actions button {
+        background: none;
+        border: none;
+        color: #475569;
+        font-size: 11px;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: color 0.15s;
+      }
+      .comment-actions button:hover {
+        color: #94a3b8;
+      }
+      .comment-form {
+        margin-top: 12px;
+      }
+      .comment-form textarea {
+        width: 100%;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        color: #e2e8f0;
+        font-size: 13px;
+        padding: 10px 12px;
+        resize: vertical;
+        min-height: 80px;
+        font-family: inherit;
+      }
+      .comment-form textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+      }
+      .comment-form-footer {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 8px;
+        gap: 8px;
+      }
+
+      /* ── Export button ── */
+      .export-btn {
+        background: transparent;
+        border: 1px solid #334155;
+        color: #94a3b8;
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .export-btn:hover {
+        border-color: #22d3ee;
+        color: #22d3ee;
+      }
+
+      /* ── Heatmap canvas ── */
+      #heatmapWrap {
+        position: relative;
+        background: #0f172a;
+        border-radius: 8px;
+        overflow: hidden;
+        min-height: 300px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #heatmapCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        border-radius: 8px;
+      }
+      #heatmapMsg {
+        color: #475569;
+        font-size: 13px;
+      }
+
+      /* ── Journey flow ── */
+      .journey-steps {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0;
+        margin-top: 8px;
+      }
+      .journey-step {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 12px;
+        min-width: 90px;
+        text-align: center;
+      }
+      .journey-step .step-page {
+        color: #818cf8;
+        font-weight: 600;
+      }
+      .journey-step .step-time {
+        color: #475569;
+        font-size: 11px;
+        margin-top: 2px;
+      }
+      .journey-arrow {
+        color: #334155;
+        font-size: 18px;
+        padding: 0 4px;
+      }
+
+      /* ── Vitals grid ── */
+      .vitals-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      @media (max-width: 600px) {
+        .vitals-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .vital-card {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 14px;
+        text-align: center;
+      }
+      .vital-card .v-label {
+        font-size: 11px;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+      }
+      .vital-card .v-value {
+        font-size: 26px;
+        font-weight: 700;
+        color: #f1f5f9;
+      }
+      .vital-card .v-rating {
+        font-size: 11px;
+        margin-top: 4px;
+      }
+
+      #loading {
+        text-align: center;
+        padding: 40px;
+        color: #475569;
+        font-size: 14px;
+      }
+
+      noscript .noscript-msg {
+        background: #1e293b;
+        border: 1px solid #f59e0b;
+        color: #fbbf24;
+        padding: 16px 20px;
+        border-radius: 8px;
+        margin: 24px;
+        font-size: 14px;
+      }
     </style>
-  </noscript>
-</head>
-<body>
-
-<noscript>
-  <div class="noscript-msg" style="background:#1e293b;border:1px solid #f59e0b;color:#fbbf24;padding:16px 20px;border-radius:8px;margin:24px;font-size:14px;">
-    JavaScript is required to use this dashboard. Please enable JavaScript in your browser settings.
-  </div>
-</noscript>
-
-<nav class="js-only">
-  <div class="nav-left">
-    <div class="brand">Analytics <span>Dashboard</span></div>
-    <div class="nav-links">
-      <a href="/dashboard" class="active">Dashboard</a>
-      <a href="/reports">Saved Reports</a>
-      <a href="/admin" id="adminLink" style="display:none">Admin</a>
-    </div>
-  </div>
-  <div class="nav-right">
-    <div class="live-badge">
-      <div class="live-dot"></div>
-      <span id="liveCount">0</span> live
-    </div>
-    <span class="nav-user" id="navUser"></span>
-    <button class="btn-sm" id="logoutBtn">Logout</button>
-  </div>
-</nav>
-
-<!-- Date range bar -->
-<div class="date-bar js-only">
-  <label>From</label>
-  <input type="date" id="dateFrom">
-  <label>To</label>
-  <input type="date" id="dateTo">
-  <label class="compare-toggle">
-    <input type="checkbox" id="compareToggle"> Compare to prior period
-  </label>
-  <button class="btn-primary" id="applyDates" style="padding:4px 12px;font-size:12px;">Apply</button>
-  <button class="btn-sm" id="resetDates" style="font-size:12px;">Reset</button>
-</div>
-
-<!-- Tabs -->
-<div class="tabs js-only" id="tabBar">
-  <button class="tab-btn active" data-tab="overview">Overview</button>
-  <button class="tab-btn" data-tab="traffic"     data-section="traffic">Traffic</button>
-  <button class="tab-btn" data-tab="performance" data-section="performance">Performance</button>
-  <button class="tab-btn" data-tab="behavior"    data-section="behavior">Behavior</button>
-  <button class="tab-btn" data-tab="errors"      data-section="errors">Errors</button>
-</div>
-
-<main class="js-only">
-
-  <!-- ══ OVERVIEW ══════════════════════════════════════════════════════════════ -->
-  <div class="tab-panel active" id="tab-overview">
-    <div class="stats">
-      <div class="stat-card"><div class="label">Total Pageviews</div><div class="value accent" id="statPageviews">—</div></div>
-      <div class="stat-card"><div class="label">Unique Sessions</div><div class="value" id="statSessions">—</div></div>
-      <div class="stat-card"><div class="label">Avg TTFB (ms)</div><div class="value" id="statTtfb">—</div></div>
-      <div class="stat-card"><div class="label">Total Errors</div><div class="value" id="statErrors">—</div></div>
-      <div class="stat-card"><div class="label">Web Vitals</div><div class="value" id="statVitals">—</div></div>
-      <div class="stat-card"><div class="label">Avg Time on Page</div><div class="value" id="statTime">—</div></div>
-    </div>
-    <div class="charts-2col">
-      <div class="card">
-        <div class="card-title">Pageviews — Last 24 Hours</div>
-        <canvas id="chartPageviews" height="160"></canvas>
+    <noscript>
+      <style>
+        .js-only {
+          display: none !important;
+        }
+      </style>
+    </noscript>
+  </head>
+  <body>
+    <noscript>
+      <div
+        class="noscript-msg"
+        style="
+          background: #1e293b;
+          border: 1px solid #f59e0b;
+          color: #fbbf24;
+          padding: 16px 20px;
+          border-radius: 8px;
+          margin: 24px;
+          font-size: 14px;
+        "
+      >
+        JavaScript is required to use this dashboard. Please enable JavaScript
+        in your browser settings.
       </div>
-      <div class="card">
-        <div class="card-title">Error Types</div>
-        <div id="errDonutWrap"><canvas id="chartErrorsOverview" height="160"></canvas></div>
-      </div>
-    </div>
-  </div>
+    </noscript>
 
-  <!-- ══ TRAFFIC ════════════════════════════════════════════════════════════════ -->
-  <div class="tab-panel" id="tab-traffic">
-    <div class="card-header" style="margin-bottom:16px">
-      <span style="font-size:16px;font-weight:600;color:#f1f5f9">Traffic</span>
-      <button class="export-btn" data-section="traffic">⬇ Export</button>
-    </div>
-
-    <div class="charts-2col">
-      <div class="card">
-        <div class="card-title">Pageviews Over Time</div>
-        <canvas id="chartTrafficLine" height="160"></canvas>
-      </div>
-      <div class="card">
-        <div class="card-title">Browsers</div>
-        <canvas id="chartBrowsers" height="160"></canvas>
-      </div>
-    </div>
-
-    <div class="charts-2col">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title" style="margin-bottom:0">Top Pages</div>
-          <input class="search-input" id="topPagesSearch" placeholder="Filter pages…" style="width:160px">
-        </div>
-        <div class="table-wrap">
-          <table id="topPagesTable">
-            <thead><tr><th>Page</th><th>Views</th><th>% of Total</th></tr></thead>
-            <tbody id="topPagesBody"></tbody>
-          </table>
+    <nav class="js-only">
+      <div class="nav-left">
+        <div class="brand">Analytics <span>Dashboard</span></div>
+        <div class="nav-links">
+          <a href="/dashboard" class="active">Dashboard</a>
+          <a href="/reports">Saved Reports</a>
+          <a href="/admin" id="adminLink" style="display: none">Admin</a>
         </div>
       </div>
-      <div class="card">
-        <div class="card-title">Devices</div>
-        <canvas id="chartDevices" height="160"></canvas>
+      <div class="nav-right">
+        <div class="live-badge">
+          <div class="live-dot"></div>
+          <span id="liveCount">0</span> live
+        </div>
+        <span class="nav-user" id="navUser"></span>
+        <button class="btn-sm" id="logoutBtn">Logout</button>
       </div>
+    </nav>
+
+    <!-- Date range bar -->
+    <div class="date-bar js-only">
+      <label>From</label>
+      <input type="date" id="dateFrom" />
+      <label>To</label>
+      <input type="date" id="dateTo" />
+      <label class="compare-toggle">
+        <input type="checkbox" id="compareToggle" /> Compare to prior period
+      </label>
+      <button
+        class="btn-primary"
+        id="applyDates"
+        style="padding: 4px 12px; font-size: 12px"
+      >
+        Apply
+      </button>
+      <button class="btn-sm" id="resetDates" style="font-size: 12px">
+        Reset
+      </button>
     </div>
 
-    <!-- Session Journey Explorer -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title" style="margin-bottom:0">Session Journey Explorer</div>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-        <input class="search-input" id="journeySessionInput" placeholder="Paste session ID…" style="flex:1;min-width:200px">
-        <button class="btn-primary" id="journeyBtn" style="padding:6px 14px">Load Journey</button>
-      </div>
-      <div id="journeyResult" style="color:#475569;font-size:13px">Enter a session ID above to see the page path.</div>
+    <!-- Tabs -->
+    <div class="tabs js-only" id="tabBar">
+      <button class="tab-btn active" data-tab="overview">Overview</button>
+      <button class="tab-btn" data-tab="traffic" data-section="traffic">
+        Traffic
+      </button>
+      <button class="tab-btn" data-tab="performance" data-section="performance">
+        Performance
+      </button>
+      <button class="tab-btn" data-tab="behavior" data-section="behavior">
+        Behavior
+      </button>
+      <button class="tab-btn" data-tab="errors" data-section="errors">
+        Errors
+      </button>
     </div>
 
-    <!-- Top transitions -->
-    <div class="card">
-      <div class="card-title">Top Page Transitions</div>
-      <div class="table-wrap">
-        <table id="transitionsTable">
-          <thead><tr><th>From</th><th>To</th><th>Count</th></tr></thead>
-          <tbody id="transitionsBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="comments-panel" id="commentsTraffic"></div>
-  </div>
-
-  <!-- ══ PERFORMANCE ════════════════════════════════════════════════════════════ -->
-  <div class="tab-panel" id="tab-performance">
-    <div class="card-header" style="margin-bottom:16px">
-      <span style="font-size:16px;font-weight:600;color:#f1f5f9">Performance</span>
-      <button class="export-btn" data-section="performance">⬇ Export</button>
-    </div>
-
-    <div class="vitals-grid" id="vitalsGrid">
-      <div class="vital-card"><div class="v-label">LCP</div><div class="v-value" id="vLcp">—</div><div class="v-rating" id="vLcpR"></div></div>
-      <div class="vital-card"><div class="v-label">CLS</div><div class="v-value" id="vCls">—</div><div class="v-rating" id="vClsR"></div></div>
-      <div class="vital-card"><div class="v-label">INP</div><div class="v-value" id="vInp">—</div><div class="v-rating" id="vInpR"></div></div>
-    </div>
-
-    <div class="charts-2col">
-      <div class="card">
-        <div class="card-title">TTFB Distribution (ms)</div>
-        <canvas id="chartTtfb" height="160"></canvas>
-      </div>
-      <div class="card">
-        <div class="card-title">Core Web Vitals Rating Mix</div>
-        <canvas id="chartVitalsRatings" height="160"></canvas>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Slowest Pages (avg TTFB)</div>
-      <div class="table-wrap">
-        <table id="slowPagesTable">
-          <thead><tr><th>Page</th><th>Avg TTFB (ms)</th><th>Avg Load (ms)</th><th>Views</th></tr></thead>
-          <tbody id="slowPagesBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title" style="margin-bottom:0">Navigation Timing — Recent Pageviews</div>
-        <input class="search-input" id="pvSearch" placeholder="Filter by URL…" style="width:160px">
-      </div>
-      <div class="table-wrap">
-        <table id="pvTable">
-          <thead><tr><th>#</th><th>Time</th><th>Page</th><th>Session</th><th>TTFB</th><th>Load</th><th>Browser</th></tr></thead>
-          <tbody id="pvBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="comments-panel" id="commentsPerformance"></div>
-  </div>
-
-  <!-- ══ BEHAVIOR ═══════════════════════════════════════════════════════════════ -->
-  <div class="tab-panel" id="tab-behavior">
-    <div class="card-header" style="margin-bottom:16px">
-      <span style="font-size:16px;font-weight:600;color:#f1f5f9">Behavior</span>
-      <button class="export-btn" data-section="behavior">⬇ Export</button>
-    </div>
-
-    <div class="charts-2col">
-      <div class="card">
-        <div class="card-title">Scroll Depth Reach (%)</div>
-        <canvas id="chartScrollDepth" height="160"></canvas>
-      </div>
-      <div class="card">
-        <div class="card-title">Event Type Breakdown</div>
-        <canvas id="chartEventKinds" height="160"></canvas>
-      </div>
-    </div>
-
-    <!-- Click Heatmap -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title" style="margin-bottom:0">Click Heatmap</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <select id="heatmapUrl" class="search-input" style="width:260px">
-            <option value="">All pages</option>
-          </select>
-          <button class="btn-primary" id="loadHeatmap" style="padding:5px 12px;font-size:12px">Load</button>
+    <main class="js-only">
+      <!-- ══ OVERVIEW ══════════════════════════════════════════════════════════════ -->
+      <div class="tab-panel active" id="tab-overview">
+        <div class="stats">
+          <div class="stat-card">
+            <div class="label">Total Pageviews</div>
+            <div class="value accent" id="statPageviews">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Unique Sessions</div>
+            <div class="value" id="statSessions">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Avg TTFB (ms)</div>
+            <div class="value" id="statTtfb">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Total Errors</div>
+            <div class="value" id="statErrors">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Web Vitals</div>
+            <div class="value" id="statVitals">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Avg Time on Page</div>
+            <div class="value" id="statTime">—</div>
+          </div>
+        </div>
+        <div class="charts-2col">
+          <div class="card">
+            <div class="card-title">Pageviews — Last 24 Hours</div>
+            <canvas id="chartPageviews" height="160"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-title">Error Types</div>
+            <div id="errDonutWrap">
+              <canvas id="chartErrorsOverview" height="160"></canvas>
+            </div>
+          </div>
         </div>
       </div>
-      <div id="heatmapWrap" style="height:320px">
-        <span id="heatmapMsg">Select a page and click Load to view click density.</span>
-        <canvas id="heatmapCanvas" width="800" height="320"></canvas>
+
+      <!-- ══ TRAFFIC ════════════════════════════════════════════════════════════════ -->
+      <div class="tab-panel" id="tab-traffic">
+        <div class="card-header" style="margin-bottom: 16px">
+          <span style="font-size: 16px; font-weight: 600; color: #f1f5f9"
+            >Traffic</span
+          >
+          <button class="export-btn" data-section="traffic">
+            ⬇ Save & Export
+          </button>
+        </div>
+
+        <div class="charts-2col">
+          <div class="card">
+            <div class="card-title">Pageviews Over Time</div>
+            <canvas id="chartTrafficLine" height="160"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-title">Browsers</div>
+            <canvas id="chartBrowsers" height="160"></canvas>
+          </div>
+        </div>
+
+        <div class="charts-2col">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title" style="margin-bottom: 0">Top Pages</div>
+              <input
+                class="search-input"
+                id="topPagesSearch"
+                placeholder="Filter pages…"
+                style="width: 160px"
+              />
+            </div>
+            <div class="table-wrap">
+              <table id="topPagesTable">
+                <thead>
+                  <tr>
+                    <th>Page</th>
+                    <th>Views</th>
+                    <th>% of Total</th>
+                  </tr>
+                </thead>
+                <tbody id="topPagesBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Devices</div>
+            <canvas id="chartDevices" height="160"></canvas>
+          </div>
+        </div>
+
+        <!-- Session Journey Explorer -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="margin-bottom: 0">
+              Session Journey Explorer
+            </div>
+          </div>
+          <div
+            style="
+              display: flex;
+              gap: 8px;
+              margin-bottom: 12px;
+              flex-wrap: wrap;
+            "
+          >
+            <input
+              class="search-input"
+              id="journeySessionInput"
+              placeholder="Paste session ID…"
+              style="flex: 1; min-width: 200px"
+            />
+            <button
+              class="btn-primary"
+              id="journeyBtn"
+              style="padding: 6px 14px"
+            >
+              Load Journey
+            </button>
+          </div>
+          <div id="journeyResult" style="color: #475569; font-size: 13px">
+            Enter a session ID above to see the page path.
+          </div>
+        </div>
+
+        <!-- Top transitions -->
+        <div class="card">
+          <div class="card-title">Top Page Transitions</div>
+          <div class="table-wrap">
+            <table id="transitionsTable">
+              <thead>
+                <tr>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Count</th>
+                </tr>
+              </thead>
+              <tbody id="transitionsBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="comments-panel" id="commentsTraffic"></div>
       </div>
-      <div style="font-size:11px;color:#475569;margin-top:8px">
-        Density: <span style="color:#f87171">■</span> high &nbsp;
-        <span style="color:#fbbf24">■</span> medium &nbsp;
-        <span style="color:#4ade80">■</span> low
+
+      <!-- ══ PERFORMANCE ════════════════════════════════════════════════════════════ -->
+      <div class="tab-panel" id="tab-performance">
+        <div class="card-header" style="margin-bottom: 16px">
+          <span style="font-size: 16px; font-weight: 600; color: #f1f5f9"
+            >Performance</span
+          >
+          <button class="export-btn" data-section="performance">
+            ⬇ Save & Export
+          </button>
+        </div>
+
+        <div class="vitals-grid" id="vitalsGrid">
+          <div class="vital-card">
+            <div class="v-label">LCP</div>
+            <div class="v-value" id="vLcp">—</div>
+            <div class="v-rating" id="vLcpR"></div>
+          </div>
+          <div class="vital-card">
+            <div class="v-label">CLS</div>
+            <div class="v-value" id="vCls">—</div>
+            <div class="v-rating" id="vClsR"></div>
+          </div>
+          <div class="vital-card">
+            <div class="v-label">INP</div>
+            <div class="v-value" id="vInp">—</div>
+            <div class="v-rating" id="vInpR"></div>
+          </div>
+        </div>
+
+        <div class="charts-2col">
+          <div class="card">
+            <div class="card-title">TTFB Distribution (ms)</div>
+            <canvas id="chartTtfb" height="160"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-title">Core Web Vitals Rating Mix</div>
+            <canvas id="chartVitalsRatings" height="160"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Slowest Pages (avg TTFB)</div>
+          <div class="table-wrap">
+            <table id="slowPagesTable">
+              <thead>
+                <tr>
+                  <th>Page</th>
+                  <th>Avg TTFB (ms)</th>
+                  <th>Avg Load (ms)</th>
+                  <th>Views</th>
+                </tr>
+              </thead>
+              <tbody id="slowPagesBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="margin-bottom: 0">
+              Navigation Timing — Recent Pageviews
+            </div>
+            <input
+              class="search-input"
+              id="pvSearch"
+              placeholder="Filter by URL…"
+              style="width: 160px"
+            />
+          </div>
+          <div class="table-wrap">
+            <table id="pvTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Time</th>
+                  <th>Page</th>
+                  <th>Session</th>
+                  <th>TTFB</th>
+                  <th>Load</th>
+                  <th>Browser</th>
+                </tr>
+              </thead>
+              <tbody id="pvBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="comments-panel" id="commentsPerformance"></div>
       </div>
-    </div>
 
-    <!-- Time on page -->
-    <div class="card">
-      <div class="card-title">Avg Time on Page</div>
-      <div class="table-wrap">
-        <table id="timeOnPageTable">
-          <thead><tr><th>Page</th><th>Visits</th><th>Avg (sec)</th><th>Min (sec)</th><th>Max (sec)</th></tr></thead>
-          <tbody id="timeOnPageBody"></tbody>
-        </table>
+      <!-- ══ BEHAVIOR ═══════════════════════════════════════════════════════════════ -->
+      <div class="tab-panel" id="tab-behavior">
+        <div class="card-header" style="margin-bottom: 16px">
+          <span style="font-size: 16px; font-weight: 600; color: #f1f5f9"
+            >Behavior</span
+          >
+          <button class="export-btn" data-section="behavior">
+            ⬇ Save & Export
+          </button>
+        </div>
+
+        <div class="charts-2col">
+          <div class="card">
+            <div class="card-title">Scroll Depth Reach (%)</div>
+            <canvas id="chartScrollDepth" height="160"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-title">Event Type Breakdown</div>
+            <canvas id="chartEventKinds" height="160"></canvas>
+          </div>
+        </div>
+
+        <!-- Click Heatmap -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="margin-bottom: 0">Click Heatmap</div>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <select id="heatmapUrl" class="search-input" style="width: 260px">
+                <option value="">All pages</option>
+              </select>
+              <button
+                class="btn-primary"
+                id="loadHeatmap"
+                style="padding: 5px 12px; font-size: 12px"
+              >
+                Load
+              </button>
+            </div>
+          </div>
+          <div id="heatmapWrap" style="height: 320px">
+            <span id="heatmapMsg"
+              >Select a page and click Load to view click density.</span
+            >
+            <canvas id="heatmapCanvas" width="800" height="320"></canvas>
+          </div>
+          <div style="font-size: 11px; color: #475569; margin-top: 8px">
+            Density: <span style="color: #f87171">■</span> high &nbsp;
+            <span style="color: #fbbf24">■</span> medium &nbsp;
+            <span style="color: #4ade80">■</span> low
+          </div>
+        </div>
+
+        <!-- Time on page -->
+        <div class="card">
+          <div class="card-title">Avg Time on Page</div>
+          <div class="table-wrap">
+            <table id="timeOnPageTable">
+              <thead>
+                <tr>
+                  <th>Page</th>
+                  <th>Visits</th>
+                  <th>Avg (sec)</th>
+                  <th>Min (sec)</th>
+                  <th>Max (sec)</th>
+                </tr>
+              </thead>
+              <tbody id="timeOnPageBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="comments-panel" id="commentsBehavior"></div>
       </div>
-    </div>
 
-    <div class="comments-panel" id="commentsBehavior"></div>
-  </div>
+      <!-- ══ ERRORS ═════════════════════════════════════════════════════════════════ -->
+      <div class="tab-panel" id="tab-errors">
+        <div class="card-header" style="margin-bottom: 16px">
+          <span style="font-size: 16px; font-weight: 600; color: #f1f5f9"
+            >Errors</span
+          >
+          <button class="export-btn" data-section="errors">
+            ⬇ Save & Export
+          </button>
+        </div>
 
-  <!-- ══ ERRORS ═════════════════════════════════════════════════════════════════ -->
-  <div class="tab-panel" id="tab-errors">
-    <div class="card-header" style="margin-bottom:16px">
-      <span style="font-size:16px;font-weight:600;color:#f1f5f9">Errors</span>
-      <button class="export-btn" data-section="errors">⬇ Export</button>
-    </div>
+        <div class="stats" style="margin-bottom: 16px">
+          <div class="stat-card">
+            <div class="label">Total Errors</div>
+            <div class="value" style="color: #f87171" id="statErrTotal">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">JS Errors</div>
+            <div class="value" id="statErrJs">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Resource Errors</div>
+            <div class="value" id="statErrRes">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Unhandled Rejections</div>
+            <div class="value" id="statErrPromise">—</div>
+          </div>
+        </div>
 
-    <div class="stats" style="margin-bottom:16px">
-      <div class="stat-card"><div class="label">Total Errors</div><div class="value" style="color:#f87171" id="statErrTotal">—</div></div>
-      <div class="stat-card"><div class="label">JS Errors</div><div class="value" id="statErrJs">—</div></div>
-      <div class="stat-card"><div class="label">Resource Errors</div><div class="value" id="statErrRes">—</div></div>
-      <div class="stat-card"><div class="label">Unhandled Rejections</div><div class="value" id="statErrPromise">—</div></div>
-    </div>
+        <div class="charts-2col">
+          <div class="card">
+            <div class="card-title">Errors Over Time</div>
+            <canvas id="chartErrorsLine" height="160"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-title">Error Type Breakdown</div>
+            <div id="errTypeDoughnutWrap">
+              <canvas id="chartErrorTypes" height="160"></canvas>
+            </div>
+          </div>
+        </div>
 
-    <div class="charts-2col">
-      <div class="card">
-        <div class="card-title">Errors Over Time</div>
-        <canvas id="chartErrorsLine" height="160"></canvas>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="margin-bottom: 0">Error Log</div>
+            <input
+              class="search-input"
+              id="errSearch"
+              placeholder="Filter errors…"
+              style="width: 180px"
+            />
+          </div>
+          <div class="table-wrap">
+            <table id="errTable">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Type</th>
+                  <th>Message</th>
+                  <th>Page</th>
+                  <th>Line</th>
+                </tr>
+              </thead>
+              <tbody id="errBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="comments-panel" id="commentsErrors"></div>
       </div>
-      <div class="card">
-        <div class="card-title">Error Type Breakdown</div>
-        <div id="errTypeDoughnutWrap"><canvas id="chartErrorTypes" height="160"></canvas></div>
-      </div>
-    </div>
+    </main>
 
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title" style="margin-bottom:0">Error Log</div>
-        <input class="search-input" id="errSearch" placeholder="Filter errors…" style="width:180px">
-      </div>
-      <div class="table-wrap">
-        <table id="errTable">
-          <thead><tr><th>Time</th><th>Type</th><th>Message</th><th>Page</th><th>Line</th></tr></thead>
-          <tbody id="errBody"></tbody>
-        </table>
-      </div>
-    </div>
+    <script>
+      "use strict";
 
-    <div class="comments-panel" id="commentsErrors"></div>
-  </div>
+      // ── State ──────────────────────────────────────────────────────────────────────
+      let currentUser = null;
+      let allPageviews = [];
+      let allErrors = [];
+      let allVitals = [];
+      let activityData = {};
+      let exitsSummary = [];
+      let transitions = [];
+      let pvChartInst = null;
+      let trafficChartInst = null;
+      let compareMode = false;
+      let prevPageviews = [];
+      let prevErrors = [];
 
-</main>
+      // ── Date range helpers ────────────────────────────────────────────────────────
+      function getDateRange() {
+        const from = document.getElementById("dateFrom").value;
+        const to = document.getElementById("dateTo").value;
+        return { from, to };
+      }
 
-<script>
-'use strict';
+      function buildParams(extra = {}) {
+        const { from, to } = getDateRange();
+        const p = new URLSearchParams();
+        if (from) p.set("from", from + "T00:00:00Z");
+        if (to) p.set("to", to + "T23:59:59Z");
+        Object.entries(extra).forEach(([k, v]) => v && p.set(k, v));
+        return p.toString() ? "?" + p.toString() : "";
+      }
 
-// ── State ──────────────────────────────────────────────────────────────────────
-let currentUser   = null;
-let allPageviews  = [];
-let allErrors     = [];
-let allVitals     = [];
-let activityData  = {};
-let exitsSummary  = [];
-let transitions   = [];
-let pvChartInst   = null;
-let trafficChartInst = null;
-let compareMode   = false;
-let prevPageviews = [];
-let prevErrors    = [];
+      function shiftRange(from, to) {
+        // Returns {from, to} for the prior period of equal length
+        const f = new Date(from + "T00:00:00Z");
+        const t = new Date(to + "T23:59:59Z");
+        const diff = t - f;
+        const pf = new Date(f - diff);
+        const pt = new Date(f - 1);
+        return {
+          from: pf.toISOString().split("T")[0],
+          to: pt.toISOString().split("T")[0],
+        };
+      }
 
-// ── Date range helpers ────────────────────────────────────────────────────────
-function getDateRange() {
-  const from = document.getElementById('dateFrom').value;
-  const to   = document.getElementById('dateTo').value;
-  return { from, to };
-}
+      // ── Format helpers ─────────────────────────────────────────────────────────────
+      function fmtTime(ts) {
+        if (!ts) return "—";
+        const d = new Date(ts);
+        return (
+          d.toLocaleDateString() +
+          " " +
+          d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        );
+      }
+      function shortUA(ua) {
+        if (!ua) return "—";
+        if (/EdgA?\/(\d+)/.test(ua))
+          return "Edge " + ua.match(/EdgA?\/(\d+)/)[1];
+        if (/OPR\/(\d+)/.test(ua)) return "Opera " + ua.match(/OPR\/(\d+)/)[1];
+        if (/Chrome\/(\d+)/.test(ua))
+          return "Chrome " + ua.match(/Chrome\/(\d+)/)[1];
+        if (/Firefox\/(\d+)/.test(ua))
+          return "Firefox " + ua.match(/Firefox\/(\d+)/)[1];
+        if (/Safari\//.test(ua)) return "Safari";
+        return ua.substring(0, 28);
+      }
+      function shortPage(url) {
+        try {
+          return new URL(url).pathname || "/";
+        } catch {
+          return url || "/";
+        }
+      }
+      function ttfbBadge(ms) {
+        if (ms == null) return '<span class="badge badge-ok">—</span>';
+        if (ms < 200) return `<span class="badge badge-good">${ms}ms</span>`;
+        if (ms < 500) return `<span class="badge badge-ok">${ms}ms</span>`;
+        return `<span class="badge badge-slow">${ms}ms</span>`;
+      }
+      function ratingColor(r) {
+        if (r === "good") return "#4ade80";
+        if (r === "needs-improvement") return "#fbbf24";
+        if (r === "poor") return "#f87171";
+        return "#64748b";
+      }
 
-function buildParams(extra = {}) {
-  const { from, to } = getDateRange();
-  const p = new URLSearchParams();
-  if (from) p.set('from', from + 'T00:00:00Z');
-  if (to)   p.set('to',   to   + 'T23:59:59Z');
-  Object.entries(extra).forEach(([k, v]) => v && p.set(k, v));
-  return p.toString() ? '?' + p.toString() : '';
-}
+      // ── Boot: auth check ──────────────────────────────────────────────────────────
+      (async () => {
+        try {
+          const r = await fetch("/api/auth/me");
+          if (!r.ok) {
+            window.location.href = "/login";
+            return;
+          }
+          currentUser = await r.json();
+          document.getElementById("navUser").textContent =
+            currentUser.user + " (" + currentUser.role + ")";
+          if (currentUser.role === "super_admin")
+            document.getElementById("adminLink").style.display = "";
 
-function shiftRange(from, to) {
-  // Returns {from, to} for the prior period of equal length
-  const f = new Date(from + 'T00:00:00Z');
-  const t = new Date(to   + 'T23:59:59Z');
-  const diff = t - f;
-  const pf = new Date(f - diff);
-  const pt = new Date(f - 1);
-  return {
-    from: pf.toISOString().split('T')[0],
-    to:   pt.toISOString().split('T')[0],
-  };
-}
+          // Show/hide tabs based on role/sections
+          document.querySelectorAll(".tab-btn[data-section]").forEach((btn) => {
+            const sec = btn.dataset.section;
+            if (currentUser.role === "super_admin") return;
+            if (
+              currentUser.role === "analyst" &&
+              currentUser.sections_allowed.includes(sec)
+            )
+              return;
+            btn.hidden = true;
+          });
 
-// ── Format helpers ─────────────────────────────────────────────────────────────
-function fmtTime(ts) {
-  if (!ts) return '—';
-  const d = new Date(ts);
-  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-function shortUA(ua) {
-  if (!ua) return '—';
-  if (/EdgA?\/(\d+)/.test(ua))   return 'Edge '    + ua.match(/EdgA?\/(\d+)/)[1];
-  if (/OPR\/(\d+)/.test(ua))     return 'Opera '   + ua.match(/OPR\/(\d+)/)[1];
-  if (/Chrome\/(\d+)/.test(ua))  return 'Chrome '  + ua.match(/Chrome\/(\d+)/)[1];
-  if (/Firefox\/(\d+)/.test(ua)) return 'Firefox ' + ua.match(/Firefox\/(\d+)/)[1];
-  if (/Safari\//.test(ua))       return 'Safari';
-  return ua.substring(0, 28);
-}
-function shortPage(url) {
-  try { return new URL(url).pathname || '/'; } catch { return url || '/'; }
-}
-function ttfbBadge(ms) {
-  if (ms == null) return '<span class="badge badge-ok">—</span>';
-  if (ms < 200)  return `<span class="badge badge-good">${ms}ms</span>`;
-  if (ms < 500)  return `<span class="badge badge-ok">${ms}ms</span>`;
-  return `<span class="badge badge-slow">${ms}ms</span>`;
-}
-function ratingColor(r) {
-  if (r === 'good')               return '#4ade80';
-  if (r === 'needs-improvement')  return '#fbbf24';
-  if (r === 'poor')               return '#f87171';
-  return '#64748b';
-}
+          // Set default date range (last 7 days)
+          const today = new Date();
+          const week = new Date(today - 7 * 86400000);
+          document.getElementById("dateTo").value = today
+            .toISOString()
+            .split("T")[0];
+          document.getElementById("dateFrom").value = week
+            .toISOString()
+            .split("T")[0];
 
-// ── Boot: auth check ──────────────────────────────────────────────────────────
-(async () => {
-  try {
-    const r = await fetch('/api/auth/me');
-    if (!r.ok) { window.location.href = '/login'; return; }
-    currentUser = await r.json();
-    document.getElementById('navUser').textContent = currentUser.user + ' (' + currentUser.role + ')';
-    if (currentUser.role === 'super_admin') document.getElementById('adminLink').style.display = '';
+          initLiveCounter();
+          await loadAll();
+        } catch {
+          window.location.href = "/login";
+        }
+      })();
 
-    // Show/hide tabs based on role/sections
-    document.querySelectorAll('.tab-btn[data-section]').forEach(btn => {
-      const sec = btn.dataset.section;
-      if (currentUser.role === 'super_admin') return;
-      if (currentUser.role === 'analyst' && currentUser.sections_allowed.includes(sec)) return;
-      btn.hidden = true;
-    });
+      // ── Logout ────────────────────────────────────────────────────────────────────
+      document
+        .getElementById("logoutBtn")
+        .addEventListener("click", async () => {
+          await fetch("/api/auth/logout", { method: "POST" });
+          window.location.href = "/login";
+        });
 
-    // Set default date range (last 7 days)
-    const today = new Date();
-    const week  = new Date(today - 7 * 86400000);
-    document.getElementById('dateTo').value   = today.toISOString().split('T')[0];
-    document.getElementById('dateFrom').value = week.toISOString().split('T')[0];
+      // ── Tabs ──────────────────────────────────────────────────────────────────────
+      document.getElementById("tabBar").addEventListener("click", (e) => {
+        const btn = e.target.closest(".tab-btn");
+        if (!btn) return;
+        document
+          .querySelectorAll(".tab-btn")
+          .forEach((b) => b.classList.remove("active"));
+        document
+          .querySelectorAll(".tab-panel")
+          .forEach((p) => p.classList.remove("active"));
+        btn.classList.add("active");
+        document
+          .getElementById("tab-" + btn.dataset.tab)
+          .classList.add("active");
+      });
 
-    initLiveCounter();
-    await loadAll();
-  } catch {
-    window.location.href = '/login';
-  }
-})();
+      // ── Date range controls ───────────────────────────────────────────────────────
+      document
+        .getElementById("applyDates")
+        .addEventListener("click", () => loadAll());
+      document.getElementById("resetDates").addEventListener("click", () => {
+        const today = new Date();
+        const week = new Date(today - 7 * 86400000);
+        document.getElementById("dateTo").value = today
+          .toISOString()
+          .split("T")[0];
+        document.getElementById("dateFrom").value = week
+          .toISOString()
+          .split("T")[0];
+        document.getElementById("compareToggle").checked = false;
+        compareMode = false;
+        loadAll();
+      });
+      document
+        .getElementById("compareToggle")
+        .addEventListener("change", (e) => {
+          compareMode = e.target.checked;
+          loadAll();
+        });
 
-// ── Logout ────────────────────────────────────────────────────────────────────
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-  await fetch('/api/auth/logout', { method: 'POST' });
-  window.location.href = '/login';
-});
+      // ── Live counter (SSE) ────────────────────────────────────────────────────────
+      function initLiveCounter() {
+        try {
+          const es = new EventSource("/api/live");
+          es.onmessage = (e) => {
+            try {
+              const { active } = JSON.parse(e.data);
+              document.getElementById("liveCount").textContent = active;
+            } catch {}
+          };
+          es.onerror = () => es.close();
+        } catch {}
+      }
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
-document.getElementById('tabBar').addEventListener('click', e => {
-  const btn = e.target.closest('.tab-btn');
-  if (!btn) return;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-});
+      // ── Load all data ─────────────────────────────────────────────────────────────
+      async function loadAll() {
+        const qs = buildParams();
+        const role = currentUser?.role;
+        const sections = currentUser?.sections_allowed || [];
+        const canSee = (s) => role === "super_admin" || sections.includes(s);
 
-// ── Date range controls ───────────────────────────────────────────────────────
-document.getElementById('applyDates').addEventListener('click', () => loadAll());
-document.getElementById('resetDates').addEventListener('click', () => {
-  const today = new Date();
-  const week  = new Date(today - 7 * 86400000);
-  document.getElementById('dateTo').value   = today.toISOString().split('T')[0];
-  document.getElementById('dateFrom').value = week.toISOString().split('T')[0];
-  document.getElementById('compareToggle').checked = false;
-  compareMode = false;
-  loadAll();
-});
-document.getElementById('compareToggle').addEventListener('change', e => {
-  compareMode = e.target.checked;
-  loadAll();
-});
+        const fetches = [
+          canSee("traffic")
+            ? fetch("/api/pageviews" + qs).then((r) => (r.ok ? r.json() : []))
+            : Promise.resolve([]),
+          canSee("errors")
+            ? fetch("/api/errors" + qs).then((r) => (r.ok ? r.json() : []))
+            : Promise.resolve([]),
+          canSee("performance")
+            ? fetch("/api/vitals" + qs).then((r) => (r.ok ? r.json() : []))
+            : Promise.resolve([]),
+          canSee("behavior")
+            ? fetch("/api/activity-summary" + qs).then((r) =>
+                r.ok ? r.json() : {},
+              )
+            : Promise.resolve({}),
+          canSee("behavior")
+            ? fetch("/api/exits-summary" + qs).then((r) =>
+                r.ok ? r.json() : [],
+              )
+            : Promise.resolve([]),
+          canSee("traffic")
+            ? fetch("/api/transitions" + qs).then((r) => (r.ok ? r.json() : []))
+            : Promise.resolve([]),
+        ];
 
-// ── Live counter (SSE) ────────────────────────────────────────────────────────
-function initLiveCounter() {
-  try {
-    const es = new EventSource('/api/live');
-    es.onmessage = e => {
-      try {
-        const { active } = JSON.parse(e.data);
-        document.getElementById('liveCount').textContent = active;
-      } catch {}
-    };
-    es.onerror = () => es.close();
-  } catch {}
-}
+        let prevFetches = [Promise.resolve([]), Promise.resolve([])];
+        if (compareMode) {
+          const { from, to } = getDateRange();
+          if (from && to) {
+            const { from: pf, to: pt } = shiftRange(from, to);
+            const pqs = "?from=" + pf + "T00:00:00Z&to=" + pt + "T23:59:59Z";
+            prevFetches = [
+              canSee("traffic")
+                ? fetch("/api/pageviews" + pqs).then((r) =>
+                    r.ok ? r.json() : [],
+                  )
+                : Promise.resolve([]),
+              canSee("errors")
+                ? fetch("/api/errors" + pqs).then((r) => (r.ok ? r.json() : []))
+                : Promise.resolve([]),
+            ];
+          }
+        }
 
-// ── Load all data ─────────────────────────────────────────────────────────────
-async function loadAll() {
-  const qs = buildParams();
-  const role = currentUser?.role;
-  const sections = currentUser?.sections_allowed || [];
-  const canSee = s => role === 'super_admin' || sections.includes(s);
+        const [pvs, errs, vitals, activity, exits, trans, ppvs, perrs] =
+          await Promise.all([...fetches, ...prevFetches]);
 
-  const fetches = [
-    canSee('traffic')     ? fetch('/api/pageviews' + qs).then(r => r.ok ? r.json() : []) : Promise.resolve([]),
-    canSee('errors')      ? fetch('/api/errors'    + qs).then(r => r.ok ? r.json() : []) : Promise.resolve([]),
-    canSee('performance') ? fetch('/api/vitals'    + qs).then(r => r.ok ? r.json() : []) : Promise.resolve([]),
-    canSee('behavior')    ? fetch('/api/activity-summary' + qs).then(r => r.ok ? r.json() : {}) : Promise.resolve({}),
-    canSee('behavior')    ? fetch('/api/exits-summary' + qs).then(r => r.ok ? r.json() : []) : Promise.resolve([]),
-    canSee('traffic')     ? fetch('/api/transitions' + qs).then(r => r.ok ? r.json() : []) : Promise.resolve([]),
-  ];
+        allPageviews = pvs;
+        allErrors = errs;
+        allVitals = vitals;
+        activityData = activity;
+        exitsSummary = exits;
+        transitions = trans;
+        prevPageviews = ppvs;
+        prevErrors = perrs;
 
-  let prevFetches = [Promise.resolve([]), Promise.resolve([])];
-  if (compareMode) {
-    const { from, to } = getDateRange();
-    if (from && to) {
-      const { from: pf, to: pt } = shiftRange(from, to);
-      const pqs = '?from=' + pf + 'T00:00:00Z&to=' + pt + 'T23:59:59Z';
-      prevFetches = [
-        canSee('traffic') ? fetch('/api/pageviews' + pqs).then(r => r.ok ? r.json() : []) : Promise.resolve([]),
-        canSee('errors')  ? fetch('/api/errors'    + pqs).then(r => r.ok ? r.json() : []) : Promise.resolve([]),
-      ];
-    }
-  }
+        renderOverview();
+        renderTraffic();
+        renderPerformance();
+        renderBehavior();
+        renderErrors();
 
-  const [pvs, errs, vitals, activity, exits, trans, ppvs, perrs] =
-    await Promise.all([...fetches, ...prevFetches]);
+        // Load comments for all visible sections
+        ["traffic", "performance", "behavior", "errors"].forEach((s) => {
+          if (canSee(s)) loadComments(s);
+        });
+      }
 
-  allPageviews  = pvs;
-  allErrors     = errs;
-  allVitals     = vitals;
-  activityData  = activity;
-  exitsSummary  = exits;
-  transitions   = trans;
-  prevPageviews = ppvs;
-  prevErrors    = perrs;
+      // ── Overview ──────────────────────────────────────────────────────────────────
+      function renderOverview() {
+        document.getElementById("statPageviews").textContent =
+          allPageviews.length;
+        document.getElementById("statSessions").textContent = new Set(
+          allPageviews.map((r) => r.session_id),
+        ).size;
 
-  renderOverview();
-  renderTraffic();
-  renderPerformance();
-  renderBehavior();
-  renderErrors();
+        const ttfbs = allPageviews
+          .map((r) => Number(r.ttfb_ms))
+          .filter((v) => v > 0);
+        document.getElementById("statTtfb").textContent = ttfbs.length
+          ? Math.round(ttfbs.reduce((a, b) => a + b, 0) / ttfbs.length) + "ms"
+          : "—";
 
-  // Load comments for all visible sections
-  ['traffic','performance','behavior','errors'].forEach(s => {
-    if (canSee(s)) loadComments(s);
-  });
-}
+        document.getElementById("statErrors").textContent = allErrors.length;
 
-// ── Overview ──────────────────────────────────────────────────────────────────
-function renderOverview() {
-  document.getElementById('statPageviews').textContent = allPageviews.length;
-  document.getElementById('statSessions').textContent =
-    new Set(allPageviews.map(r => r.session_id)).size;
+        const goodVitals = allVitals.filter((v) => v.overall === "good").length;
+        document.getElementById("statVitals").textContent = allVitals.length
+          ? goodVitals + "/" + allVitals.length + " good"
+          : "—";
 
-  const ttfbs = allPageviews.map(r => Number(r.ttfb_ms)).filter(v => v > 0);
-  document.getElementById('statTtfb').textContent =
-    ttfbs.length ? Math.round(ttfbs.reduce((a, b) => a + b, 0) / ttfbs.length) + 'ms' : '—';
+        const avgSec = exitsSummary.length
+          ? (
+              exitsSummary.reduce(
+                (a, b) => a + Number(b.avg_time_sec || 0),
+                0,
+              ) / exitsSummary.length
+            ).toFixed(0) + "s"
+          : "—";
+        document.getElementById("statTime").textContent = avgSec;
 
-  document.getElementById('statErrors').textContent = allErrors.length;
+        // Hourly chart (last 24h, ignores date range)
+        const now = Date.now();
+        const bins = Array.from({ length: 24 }, (_, i) => ({
+          label: 23 - i + "h",
+          count: 0,
+        }));
+        allPageviews.forEach((pv) => {
+          const ts = new Date(pv.page_started || pv.entered_at || 0).getTime();
+          const hr = Math.floor((now - ts) / 3600000);
+          if (hr >= 0 && hr < 24) bins[23 - hr].count++;
+        });
 
-  const goodVitals = allVitals.filter(v => v.overall === 'good').length;
-  document.getElementById('statVitals').textContent =
-    allVitals.length ? goodVitals + '/' + allVitals.length + ' good' : '—';
+        if (pvChartInst) pvChartInst.destroy();
+        pvChartInst = new Chart(document.getElementById("chartPageviews"), {
+          type: "bar",
+          data: {
+            labels: bins.map((b) => b.label),
+            datasets: [
+              {
+                label: "Pageviews",
+                data: bins.map((b) => b.count),
+                backgroundColor: "rgba(99,102,241,0.7)",
+                borderColor: "#6366f1",
+                borderWidth: 1,
+                borderRadius: 3,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: {
+                ticks: { color: "#64748b", maxTicksLimit: 8 },
+                grid: { color: "#1e293b" },
+              },
+              y: {
+                ticks: { color: "#64748b" },
+                grid: { color: "#334155" },
+                beginAtZero: true,
+              },
+            },
+          },
+        });
 
-  const avgSec = exitsSummary.length
-    ? (exitsSummary.reduce((a, b) => a + Number(b.avg_time_sec || 0), 0) / exitsSummary.length).toFixed(0) + 's'
-    : '—';
-  document.getElementById('statTime').textContent = avgSec;
+        renderErrorsDoughnut("chartErrorsOverview", "errDonutWrap", allErrors);
+      }
 
-  // Hourly chart (last 24h, ignores date range)
-  const now  = Date.now();
-  const bins = Array.from({ length: 24 }, (_, i) => ({ label: (23 - i) + 'h', count: 0 }));
-  allPageviews.forEach(pv => {
-    const ts = new Date(pv.page_started || pv.entered_at || 0).getTime();
-    const hr = Math.floor((now - ts) / 3600000);
-    if (hr >= 0 && hr < 24) bins[23 - hr].count++;
-  });
+      function renderErrorsDoughnut(canvasId, wrapId, errs) {
+        const counts = {};
+        errs.forEach((e) => {
+          const t = e.error_type || "unknown";
+          counts[t] = (counts[t] || 0) + 1;
+        });
+        const labels = Object.keys(counts);
+        if (!labels.length) {
+          document.getElementById(wrapId).innerHTML =
+            '<p style="color:#64748b;font-size:13px;text-align:center;padding:32px 0">No errors recorded.</p>';
+          return;
+        }
+        const palette = [
+          "#f87171",
+          "#fbbf24",
+          "#6366f1",
+          "#22d3ee",
+          "#34d399",
+          "#a78bfa",
+        ];
+        new Chart(document.getElementById(canvasId), {
+          type: "doughnut",
+          data: {
+            labels,
+            datasets: [
+              {
+                data: Object.values(counts),
+                backgroundColor: palette.slice(0, labels.length),
+                borderWidth: 2,
+                borderColor: "#0f172a",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: {
+                  color: "#94a3b8",
+                  boxWidth: 12,
+                  padding: 12,
+                  font: { size: 11 },
+                },
+              },
+            },
+          },
+        });
+      }
 
-  if (pvChartInst) pvChartInst.destroy();
-  pvChartInst = new Chart(document.getElementById('chartPageviews'), {
-    type: 'bar',
-    data: {
-      labels: bins.map(b => b.label),
-      datasets: [{ label: 'Pageviews', data: bins.map(b => b.count),
-        backgroundColor: 'rgba(99,102,241,0.7)', borderColor: '#6366f1',
-        borderWidth: 1, borderRadius: 3 }],
-    },
-    options: {
-      responsive: true, plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: '#64748b', maxTicksLimit: 8 }, grid: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b' }, grid: { color: '#334155' }, beginAtZero: true },
-      },
-    },
-  });
+      // ── Traffic ───────────────────────────────────────────────────────────────────
+      function renderTraffic() {
+        // Pageviews over time (daily buckets)
+        const { from, to } = getDateRange();
+        const dayBuckets = {};
+        allPageviews.forEach((pv) => {
+          const day = (pv.page_started || pv.entered_at || "").split("T")[0];
+          if (day) dayBuckets[day] = (dayBuckets[day] || 0) + 1;
+        });
+        const dayLabels = Object.keys(dayBuckets).sort();
+        const dayData = dayLabels.map((d) => dayBuckets[d]);
 
-  renderErrorsDoughnut('chartErrorsOverview', 'errDonutWrap', allErrors);
-}
+        const datasets = [
+          {
+            label: "Pageviews",
+            data: dayData,
+            borderColor: "#6366f1",
+            backgroundColor: "rgba(99,102,241,0.15)",
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+          },
+        ];
 
-function renderErrorsDoughnut(canvasId, wrapId, errs) {
-  const counts = {};
-  errs.forEach(e => { const t = e.error_type || 'unknown'; counts[t] = (counts[t] || 0) + 1; });
-  const labels = Object.keys(counts);
-  if (!labels.length) {
-    document.getElementById(wrapId).innerHTML =
-      '<p style="color:#64748b;font-size:13px;text-align:center;padding:32px 0">No errors recorded.</p>';
-    return;
-  }
-  const palette = ['#f87171','#fbbf24','#6366f1','#22d3ee','#34d399','#a78bfa'];
-  new Chart(document.getElementById(canvasId), {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{ data: Object.values(counts), backgroundColor: palette.slice(0, labels.length),
-        borderWidth: 2, borderColor: '#0f172a' }],
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12, padding: 12, font: { size: 11 } } } },
-    },
-  });
-}
+        if (compareMode && prevPageviews.length) {
+          const prevBuckets = {};
+          prevPageviews.forEach((pv) => {
+            const day = (pv.page_started || pv.entered_at || "").split("T")[0];
+            if (day) prevBuckets[day] = (prevBuckets[day] || 0) + 1;
+          });
+          datasets.push({
+            label: "Prior period",
+            data: dayLabels.map((d) => prevBuckets[d] || 0),
+            borderColor: "#334155",
+            backgroundColor: "transparent",
+            fill: false,
+            tension: 0.3,
+            borderDash: [5, 3],
+            pointRadius: 2,
+          });
+        }
 
-// ── Traffic ───────────────────────────────────────────────────────────────────
-function renderTraffic() {
-  // Pageviews over time (daily buckets)
-  const { from, to } = getDateRange();
-  const dayBuckets = {};
-  allPageviews.forEach(pv => {
-    const day = (pv.page_started || pv.entered_at || '').split('T')[0];
-    if (day) dayBuckets[day] = (dayBuckets[day] || 0) + 1;
-  });
-  const dayLabels = Object.keys(dayBuckets).sort();
-  const dayData   = dayLabels.map(d => dayBuckets[d]);
+        if (trafficChartInst) trafficChartInst.destroy();
+        trafficChartInst = new Chart(
+          document.getElementById("chartTrafficLine"),
+          {
+            type: "line",
+            data: { labels: dayLabels, datasets },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { labels: { color: "#94a3b8", boxWidth: 12 } },
+              },
+              scales: {
+                x: {
+                  ticks: { color: "#64748b", maxTicksLimit: 10 },
+                  grid: { color: "#1e293b" },
+                },
+                y: {
+                  ticks: { color: "#64748b" },
+                  grid: { color: "#334155" },
+                  beginAtZero: true,
+                },
+              },
+            },
+          },
+        );
 
-  const datasets = [{ label: 'Pageviews', data: dayData,
-    borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.15)',
-    fill: true, tension: 0.3, pointRadius: 3 }];
+        // Browser doughnut
+        const browsers = {};
+        allPageviews.forEach((pv) => {
+          const b = shortUA(pv.user_agent).replace(/\s\d+$/, "");
+          browsers[b] = (browsers[b] || 0) + 1;
+        });
+        const bLabels = Object.keys(browsers)
+          .sort((a, b) => browsers[b] - browsers[a])
+          .slice(0, 6);
+        const palette = [
+          "#6366f1",
+          "#22d3ee",
+          "#f59e0b",
+          "#f87171",
+          "#34d399",
+          "#a78bfa",
+        ];
+        new Chart(document.getElementById("chartBrowsers"), {
+          type: "doughnut",
+          data: {
+            labels: bLabels,
+            datasets: [
+              {
+                data: bLabels.map((b) => browsers[b]),
+                backgroundColor: palette,
+                borderWidth: 2,
+                borderColor: "#0f172a",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: {
+                  color: "#94a3b8",
+                  boxWidth: 12,
+                  padding: 10,
+                  font: { size: 11 },
+                },
+              },
+            },
+          },
+        });
 
-  if (compareMode && prevPageviews.length) {
-    const prevBuckets = {};
-    prevPageviews.forEach(pv => {
-      const day = (pv.page_started || pv.entered_at || '').split('T')[0];
-      if (day) prevBuckets[day] = (prevBuckets[day] || 0) + 1;
-    });
-    datasets.push({ label: 'Prior period', data: dayLabels.map(d => prevBuckets[d] || 0),
-      borderColor: '#334155', backgroundColor: 'transparent',
-      fill: false, tension: 0.3, borderDash: [5, 3], pointRadius: 2 });
-  }
+        // Devices (mobile vs desktop based on screen width)
+        const devices = { Mobile: 0, Tablet: 0, Desktop: 0 };
+        allPageviews.forEach((pv) => {
+          const w = Number(pv.screen_width) || 0;
+          if (w < 768) devices.Mobile++;
+          else if (w < 1200) devices.Tablet++;
+          else devices.Desktop++;
+        });
+        new Chart(document.getElementById("chartDevices"), {
+          type: "doughnut",
+          data: {
+            labels: ["Mobile", "Tablet", "Desktop"],
+            datasets: [
+              {
+                data: [devices.Mobile, devices.Tablet, devices.Desktop],
+                backgroundColor: ["#f59e0b", "#22d3ee", "#6366f1"],
+                borderWidth: 2,
+                borderColor: "#0f172a",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: {
+                  color: "#94a3b8",
+                  boxWidth: 12,
+                  padding: 10,
+                  font: { size: 11 },
+                },
+              },
+            },
+          },
+        });
 
-  if (trafficChartInst) trafficChartInst.destroy();
-  trafficChartInst = new Chart(document.getElementById('chartTrafficLine'), {
-    type: 'line', data: { labels: dayLabels, datasets },
-    options: {
-      responsive: true,
-      plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12 } } },
-      scales: {
-        x: { ticks: { color: '#64748b', maxTicksLimit: 10 }, grid: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b' }, grid: { color: '#334155' }, beginAtZero: true },
-      },
-    },
-  });
+        // Top pages table
+        const pageCounts = {};
+        allPageviews.forEach((pv) => {
+          const p = shortPage(pv.url);
+          pageCounts[p] = (pageCounts[p] || 0) + 1;
+        });
+        const sorted = Object.entries(pageCounts).sort((a, b) => b[1] - a[1]);
+        const total = allPageviews.length || 1;
+        let topPagesData = sorted;
 
-  // Browser doughnut
-  const browsers = {};
-  allPageviews.forEach(pv => {
-    const b = shortUA(pv.user_agent).replace(/\s\d+$/, '');
-    browsers[b] = (browsers[b] || 0) + 1;
-  });
-  const bLabels = Object.keys(browsers).sort((a, b) => browsers[b] - browsers[a]).slice(0, 6);
-  const palette = ['#6366f1','#22d3ee','#f59e0b','#f87171','#34d399','#a78bfa'];
-  new Chart(document.getElementById('chartBrowsers'), {
-    type: 'doughnut',
-    data: { labels: bLabels, datasets: [{ data: bLabels.map(b => browsers[b]),
-      backgroundColor: palette, borderWidth: 2, borderColor: '#0f172a' }] },
-    options: { responsive: true,
-      plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12, padding: 10, font: { size: 11 } } } } },
-  });
+        function renderTopPages(data) {
+          document.getElementById("topPagesBody").innerHTML =
+            data
+              .map(
+                ([p, cnt]) =>
+                  `<tr><td title="${p}">${p}</td><td>${cnt}</td><td>${((cnt / total) * 100).toFixed(1)}%</td></tr>`,
+              )
+              .join("") ||
+            '<tr><td colspan="3" style="text-align:center;padding:24px;color:#475569">No data</td></tr>';
+        }
+        renderTopPages(topPagesData);
 
-  // Devices (mobile vs desktop based on screen width)
-  const devices = { Mobile: 0, Tablet: 0, Desktop: 0 };
-  allPageviews.forEach(pv => {
-    const w = Number(pv.screen_width) || 0;
-    if (w < 768) devices.Mobile++;
-    else if (w < 1200) devices.Tablet++;
-    else devices.Desktop++;
-  });
-  new Chart(document.getElementById('chartDevices'), {
-    type: 'doughnut',
-    data: { labels: ['Mobile','Tablet','Desktop'],
-      datasets: [{ data: [devices.Mobile, devices.Tablet, devices.Desktop],
-        backgroundColor: ['#f59e0b','#22d3ee','#6366f1'], borderWidth: 2, borderColor: '#0f172a' }] },
-    options: { responsive: true,
-      plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12, padding: 10, font: { size: 11 } } } } },
-  });
+        document.getElementById("topPagesSearch").oninput = (e) => {
+          const q = e.target.value.toLowerCase();
+          renderTopPages(sorted.filter(([p]) => p.toLowerCase().includes(q)));
+        };
 
-  // Top pages table
-  const pageCounts = {};
-  allPageviews.forEach(pv => {
-    const p = shortPage(pv.url);
-    pageCounts[p] = (pageCounts[p] || 0) + 1;
-  });
-  const sorted = Object.entries(pageCounts).sort((a, b) => b[1] - a[1]);
-  const total  = allPageviews.length || 1;
-  let topPagesData = sorted;
+        // Transitions table
+        document.getElementById("transitionsBody").innerHTML =
+          transitions
+            .slice(0, 15)
+            .map(
+              (t) =>
+                `<tr><td>${t.from_page || "—"}</td><td>${t.to_page || "—"}</td><td>${t.cnt}</td></tr>`,
+            )
+            .join("") ||
+          '<tr><td colspan="3" style="text-align:center;padding:24px;color:#475569">No transition data</td></tr>';
 
-  function renderTopPages(data) {
-    document.getElementById('topPagesBody').innerHTML = data.map(([p, cnt]) =>
-      `<tr><td title="${p}">${p}</td><td>${cnt}</td><td>${((cnt/total)*100).toFixed(1)}%</td></tr>`
-    ).join('') || '<tr><td colspan="3" style="text-align:center;padding:24px;color:#475569">No data</td></tr>';
-  }
-  renderTopPages(topPagesData);
+        // Populate heatmap URL dropdown
+        const urlSet = new Set(
+          allPageviews.map((pv) => pv.url).filter(Boolean),
+        );
+        const sel = document.getElementById("heatmapUrl");
+        sel.innerHTML =
+          '<option value="">All pages</option>' +
+          [...urlSet]
+            .slice(0, 30)
+            .map((u) => `<option value="${u}">${shortPage(u)}</option>`)
+            .join("");
+      }
 
-  document.getElementById('topPagesSearch').oninput = e => {
-    const q = e.target.value.toLowerCase();
-    renderTopPages(sorted.filter(([p]) => p.toLowerCase().includes(q)));
-  };
+      // ── Performance ───────────────────────────────────────────────────────────────
+      function renderPerformance() {
+        // Web Vitals averages
+        if (allVitals.length) {
+          const avgLcp =
+            allVitals
+              .filter((v) => v.lcp_ms)
+              .reduce((a, b) => a + Number(b.lcp_ms), 0) /
+              allVitals.filter((v) => v.lcp_ms).length || 0;
+          const avgCls =
+            allVitals
+              .filter((v) => v.cls_score != null)
+              .reduce((a, b) => a + Number(b.cls_score), 0) /
+              allVitals.filter((v) => v.cls_score != null).length || 0;
+          const avgInp =
+            allVitals
+              .filter((v) => v.inp_ms)
+              .reduce((a, b) => a + Number(b.inp_ms), 0) /
+              allVitals.filter((v) => v.inp_ms).length || 0;
+          const lcpR = allVitals.map((v) => v.lcp_rating).filter(Boolean);
+          const topLcpR = lcpR.sort(
+            (a, b) =>
+              lcpR.filter((x) => x === b).length -
+              lcpR.filter((x) => x === a).length,
+          )[0];
 
-  // Transitions table
-  document.getElementById('transitionsBody').innerHTML = transitions.slice(0, 15).map(t =>
-    `<tr><td>${t.from_page || '—'}</td><td>${t.to_page || '—'}</td><td>${t.cnt}</td></tr>`
-  ).join('') || '<tr><td colspan="3" style="text-align:center;padding:24px;color:#475569">No transition data</td></tr>';
+          document.getElementById("vLcp").textContent = avgLcp
+            ? (avgLcp / 1000).toFixed(2) + "s"
+            : "—";
+          document.getElementById("vCls").textContent = avgCls
+            ? avgCls.toFixed(3)
+            : "—";
+          document.getElementById("vInp").textContent = avgInp
+            ? avgInp.toFixed(0) + "ms"
+            : "—";
+          document.getElementById("vLcpR").innerHTML = topLcpR
+            ? `<span style="color:${ratingColor(topLcpR)}">${topLcpR}</span>`
+            : "";
 
-  // Populate heatmap URL dropdown
-  const urlSet = new Set(allPageviews.map(pv => pv.url).filter(Boolean));
-  const sel = document.getElementById('heatmapUrl');
-  sel.innerHTML = '<option value="">All pages</option>' +
-    [...urlSet].slice(0, 30).map(u => `<option value="${u}">${shortPage(u)}</option>`).join('');
-}
+          // Vitals ratings stacked bar
+          const ratings = ["good", "needs-improvement", "poor"];
+          const lcpCounts = ratings.map(
+            (r) => allVitals.filter((v) => v.lcp_rating === r).length,
+          );
+          const clsCounts = ratings.map(
+            (r) => allVitals.filter((v) => v.cls_rating === r).length,
+          );
+          const inpCounts = ratings.map(
+            (r) => allVitals.filter((v) => v.inp_rating === r).length,
+          );
+          new Chart(document.getElementById("chartVitalsRatings"), {
+            type: "bar",
+            data: {
+              labels: ["LCP", "CLS", "INP"],
+              datasets: [
+                {
+                  label: "Good",
+                  data: [lcpCounts[0], clsCounts[0], inpCounts[0]],
+                  backgroundColor: "#4ade80",
+                },
+                {
+                  label: "Needs Improvement",
+                  data: [lcpCounts[1], clsCounts[1], inpCounts[1]],
+                  backgroundColor: "#fbbf24",
+                },
+                {
+                  label: "Poor",
+                  data: [lcpCounts[2], clsCounts[2], inpCounts[2]],
+                  backgroundColor: "#f87171",
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              indexAxis: "y",
+              plugins: {
+                legend: {
+                  labels: {
+                    color: "#94a3b8",
+                    boxWidth: 12,
+                    font: { size: 11 },
+                  },
+                },
+              },
+              scales: {
+                x: {
+                  stacked: true,
+                  ticks: { color: "#64748b" },
+                  grid: { color: "#334155" },
+                },
+                y: {
+                  stacked: true,
+                  ticks: { color: "#64748b" },
+                  grid: { color: "#1e293b" },
+                },
+              },
+            },
+          });
+        }
 
-// ── Performance ───────────────────────────────────────────────────────────────
-function renderPerformance() {
-  // Web Vitals averages
-  if (allVitals.length) {
-    const avgLcp = allVitals.filter(v => v.lcp_ms).reduce((a, b) => a + Number(b.lcp_ms), 0) / allVitals.filter(v => v.lcp_ms).length || 0;
-    const avgCls = allVitals.filter(v => v.cls_score != null).reduce((a, b) => a + Number(b.cls_score), 0) / allVitals.filter(v => v.cls_score != null).length || 0;
-    const avgInp = allVitals.filter(v => v.inp_ms).reduce((a, b) => a + Number(b.inp_ms), 0) / allVitals.filter(v => v.inp_ms).length || 0;
-    const lcpR   = allVitals.map(v => v.lcp_rating).filter(Boolean);
-    const topLcpR = lcpR.sort((a,b) => lcpR.filter(x=>x===b).length - lcpR.filter(x=>x===a).length)[0];
+        // TTFB distribution histogram (buckets: 0-100, 100-200, 200-500, 500-1000, 1000+)
+        const ttfbBuckets = [0, 0, 0, 0, 0];
+        allPageviews.forEach((pv) => {
+          const t = Number(pv.ttfb_ms);
+          if (!t) return;
+          if (t < 100) ttfbBuckets[0]++;
+          else if (t < 200) ttfbBuckets[1]++;
+          else if (t < 500) ttfbBuckets[2]++;
+          else if (t < 1000) ttfbBuckets[3]++;
+          else ttfbBuckets[4]++;
+        });
+        new Chart(document.getElementById("chartTtfb"), {
+          type: "bar",
+          data: {
+            labels: [
+              "<100ms",
+              "100-200ms",
+              "200-500ms",
+              "500-1000ms",
+              ">1000ms",
+            ],
+            datasets: [
+              {
+                label: "Pages",
+                data: ttfbBuckets,
+                backgroundColor: [
+                  "#4ade80",
+                  "#4ade80",
+                  "#fbbf24",
+                  "#f87171",
+                  "#f87171",
+                ],
+                borderRadius: 4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: "#64748b" }, grid: { color: "#1e293b" } },
+              y: {
+                ticks: { color: "#64748b" },
+                grid: { color: "#334155" },
+                beginAtZero: true,
+              },
+            },
+          },
+        });
 
-    document.getElementById('vLcp').textContent  = avgLcp  ? (avgLcp/1000).toFixed(2) + 's' : '—';
-    document.getElementById('vCls').textContent  = avgCls  ? avgCls.toFixed(3) : '—';
-    document.getElementById('vInp').textContent  = avgInp  ? avgInp.toFixed(0) + 'ms' : '—';
-    document.getElementById('vLcpR').innerHTML   = topLcpR ? `<span style="color:${ratingColor(topLcpR)}">${topLcpR}</span>` : '';
+        // Slowest pages
+        const pagePerf = {};
+        allPageviews.forEach((pv) => {
+          const p = shortPage(pv.url);
+          if (!pagePerf[p]) pagePerf[p] = { ttfbs: [], loads: [] };
+          if (pv.ttfb_ms) pagePerf[p].ttfbs.push(Number(pv.ttfb_ms));
+          if (pv.total_load_ms)
+            pagePerf[p].loads.push(Number(pv.total_load_ms));
+        });
+        const slowPages = Object.entries(pagePerf)
+          .map(([p, d]) => ({
+            page: p,
+            avgTtfb: d.ttfbs.length
+              ? Math.round(d.ttfbs.reduce((a, b) => a + b, 0) / d.ttfbs.length)
+              : 0,
+            avgLoad: d.loads.length
+              ? Math.round(d.loads.reduce((a, b) => a + b, 0) / d.loads.length)
+              : 0,
+            views: Math.max(d.ttfbs.length, d.loads.length),
+          }))
+          .sort((a, b) => b.avgTtfb - a.avgTtfb)
+          .slice(0, 15);
 
-    // Vitals ratings stacked bar
-    const ratings = ['good','needs-improvement','poor'];
-    const lcpCounts = ratings.map(r => allVitals.filter(v => v.lcp_rating === r).length);
-    const clsCounts = ratings.map(r => allVitals.filter(v => v.cls_rating === r).length);
-    const inpCounts = ratings.map(r => allVitals.filter(v => v.inp_rating === r).length);
-    new Chart(document.getElementById('chartVitalsRatings'), {
-      type: 'bar',
-      data: {
-        labels: ['LCP','CLS','INP'],
-        datasets: [
-          { label: 'Good',             data: [lcpCounts[0], clsCounts[0], inpCounts[0]], backgroundColor: '#4ade80' },
-          { label: 'Needs Improvement',data: [lcpCounts[1], clsCounts[1], inpCounts[1]], backgroundColor: '#fbbf24' },
-          { label: 'Poor',             data: [lcpCounts[2], clsCounts[2], inpCounts[2]], backgroundColor: '#f87171' },
-        ],
-      },
-      options: {
-        responsive: true, indexAxis: 'y',
-        plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12, font: { size: 11 } } } },
-        scales: {
-          x: { stacked: true, ticks: { color: '#64748b' }, grid: { color: '#334155' } },
-          y: { stacked: true, ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
-        },
-      },
-    });
-  }
+        document.getElementById("slowPagesBody").innerHTML =
+          slowPages
+            .map(
+              (r) =>
+                `<tr><td title="${r.page}">${r.page}</td><td>${ttfbBadge(r.avgTtfb)}</td><td>${r.avgLoad || "—"}</td><td>${r.views}</td></tr>`,
+            )
+            .join("") ||
+          '<tr><td colspan="4" style="text-align:center;padding:24px;color:#475569">No data</td></tr>';
 
-  // TTFB distribution histogram (buckets: 0-100, 100-200, 200-500, 500-1000, 1000+)
-  const ttfbBuckets = [0, 0, 0, 0, 0];
-  allPageviews.forEach(pv => {
-    const t = Number(pv.ttfb_ms);
-    if (!t) return;
-    if (t < 100)  ttfbBuckets[0]++;
-    else if (t < 200) ttfbBuckets[1]++;
-    else if (t < 500) ttfbBuckets[2]++;
-    else if (t < 1000) ttfbBuckets[3]++;
-    else ttfbBuckets[4]++;
-  });
-  new Chart(document.getElementById('chartTtfb'), {
-    type: 'bar',
-    data: {
-      labels: ['<100ms','100-200ms','200-500ms','500-1000ms','>1000ms'],
-      datasets: [{ label: 'Pages', data: ttfbBuckets,
-        backgroundColor: ['#4ade80','#4ade80','#fbbf24','#f87171','#f87171'],
-        borderRadius: 4 }],
-    },
-    options: {
-      responsive: true, plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b' }, grid: { color: '#334155' }, beginAtZero: true },
-      },
-    },
-  });
-
-  // Slowest pages
-  const pagePerf = {};
-  allPageviews.forEach(pv => {
-    const p = shortPage(pv.url);
-    if (!pagePerf[p]) pagePerf[p] = { ttfbs: [], loads: [] };
-    if (pv.ttfb_ms)       pagePerf[p].ttfbs.push(Number(pv.ttfb_ms));
-    if (pv.total_load_ms) pagePerf[p].loads.push(Number(pv.total_load_ms));
-  });
-  const slowPages = Object.entries(pagePerf)
-    .map(([p, d]) => ({
-      page:    p,
-      avgTtfb: d.ttfbs.length ? Math.round(d.ttfbs.reduce((a,b)=>a+b,0)/d.ttfbs.length) : 0,
-      avgLoad: d.loads.length ? Math.round(d.loads.reduce((a,b)=>a+b,0)/d.loads.length) : 0,
-      views:   Math.max(d.ttfbs.length, d.loads.length),
-    }))
-    .sort((a, b) => b.avgTtfb - a.avgTtfb).slice(0, 15);
-
-  document.getElementById('slowPagesBody').innerHTML = slowPages.map(r =>
-    `<tr><td title="${r.page}">${r.page}</td><td>${ttfbBadge(r.avgTtfb)}</td><td>${r.avgLoad || '—'}</td><td>${r.views}</td></tr>`
-  ).join('') || '<tr><td colspan="4" style="text-align:center;padding:24px;color:#475569">No data</td></tr>';
-
-  // Pageviews table
-  let pvData = allPageviews.slice(0, 200);
-  function renderPvTable(data) {
-    document.getElementById('pvBody').innerHTML = data.map((r, i) =>
-      `<tr>
-        <td class="mono">${r.id || i+1}</td>
+        // Pageviews table
+        let pvData = allPageviews.slice(0, 200);
+        function renderPvTable(data) {
+          document.getElementById("pvBody").innerHTML =
+            data
+              .map(
+                (r, i) =>
+                  `<tr>
+        <td class="mono">${r.id || i + 1}</td>
         <td>${fmtTime(r.page_started || r.entered_at)}</td>
-        <td title="${r.url||''}">${shortPage(r.url)}</td>
-        <td class="mono" title="Click to copy full session ID" style="cursor:pointer;color:#818cf8" onclick="navigator.clipboard.writeText('${r.session_id||''}').then(()=>{this.textContent='Copied!';setTimeout(()=>{this.textContent='${(r.session_id||'').substring(0,12)}…'},1200)})">${(r.session_id||'').substring(0,12)}…</td>
+        <td title="${r.url || ""}">${shortPage(r.url)}</td>
+        <td class="mono" title="Click to copy full session ID" style="cursor:pointer;color:#818cf8" onclick="navigator.clipboard.writeText('${r.session_id || ""}').then(()=>{this.textContent='Copied!';setTimeout(()=>{this.textContent='${(r.session_id || "").substring(0, 12)}…'},1200)})">${(r.session_id || "").substring(0, 12)}…</td>
         <td>${ttfbBadge(r.ttfb_ms)}</td>
-        <td>${r.total_load_ms != null ? r.total_load_ms + 'ms' : '—'}</td>
+        <td>${r.total_load_ms != null ? r.total_load_ms + "ms" : "—"}</td>
         <td>${shortUA(r.user_agent)}</td>
-      </tr>`
-    ).join('') || '<tr><td colspan="7" style="text-align:center;padding:24px;color:#475569">No data</td></tr>';
-  }
-  renderPvTable(pvData);
-  document.getElementById('pvSearch').oninput = e => {
-    const q = e.target.value.toLowerCase();
-    renderPvTable(allPageviews.filter(r => (r.url||'').toLowerCase().includes(q) || (r.session_id||'').toLowerCase().includes(q)).slice(0,200));
-  };
-}
+      </tr>`,
+              )
+              .join("") ||
+            '<tr><td colspan="7" style="text-align:center;padding:24px;color:#475569">No data</td></tr>';
+        }
+        renderPvTable(pvData);
+        document.getElementById("pvSearch").oninput = (e) => {
+          const q = e.target.value.toLowerCase();
+          renderPvTable(
+            allPageviews
+              .filter(
+                (r) =>
+                  (r.url || "").toLowerCase().includes(q) ||
+                  (r.session_id || "").toLowerCase().includes(q),
+              )
+              .slice(0, 200),
+          );
+        };
+      }
 
-// ── Behavior ──────────────────────────────────────────────────────────────────
-function renderBehavior() {
-  // Scroll depth chart
-  const scrollData = activityData.scroll_depths || [];
-  const sdLabels   = ['25%','50%','75%','100%'];
-  const sdCounts   = sdLabels.map(l => {
-    const d = scrollData.find(r => r.depth === l.replace('%',''));
-    return d ? Number(d.cnt) : 0;
-  });
-  new Chart(document.getElementById('chartScrollDepth'), {
-    type: 'bar',
-    data: {
-      labels: sdLabels,
-      datasets: [{ label: 'Sessions reaching depth', data: sdCounts,
-        backgroundColor: ['#6366f1','#818cf8','#a5b4fc','#c7d2fe'], borderRadius: 4 }],
-    },
-    options: {
-      responsive: true, plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b' }, grid: { color: '#334155' }, beginAtZero: true },
-      },
-    },
-  });
+      // ── Behavior ──────────────────────────────────────────────────────────────────
+      function renderBehavior() {
+        // Scroll depth chart
+        const scrollData = activityData.scroll_depths || [];
+        const sdLabels = ["25%", "50%", "75%", "100%"];
+        const sdCounts = sdLabels.map((l) => {
+          const d = scrollData.find((r) => r.depth === l.replace("%", ""));
+          return d ? Number(d.cnt) : 0;
+        });
+        new Chart(document.getElementById("chartScrollDepth"), {
+          type: "bar",
+          data: {
+            labels: sdLabels,
+            datasets: [
+              {
+                label: "Sessions reaching depth",
+                data: sdCounts,
+                backgroundColor: ["#6366f1", "#818cf8", "#a5b4fc", "#c7d2fe"],
+                borderRadius: 4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: "#64748b" }, grid: { color: "#1e293b" } },
+              y: {
+                ticks: { color: "#64748b" },
+                grid: { color: "#334155" },
+                beginAtZero: true,
+              },
+            },
+          },
+        });
 
-  // Event kind breakdown doughnut
-  const kinds   = (activityData.event_kinds || []).slice(0, 8);
-  const palette = ['#6366f1','#22d3ee','#f59e0b','#f87171','#34d399','#a78bfa','#fb923c','#38bdf8'];
-  if (kinds.length) {
-    new Chart(document.getElementById('chartEventKinds'), {
-      type: 'doughnut',
-      data: { labels: kinds.map(k => k.event_kind),
-        datasets: [{ data: kinds.map(k => Number(k.cnt)),
-          backgroundColor: palette.slice(0, kinds.length), borderWidth: 2, borderColor: '#0f172a' }] },
-      options: { responsive: true,
-        plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12, padding: 10, font: { size: 11 } } } } },
-    });
-  }
+        // Event kind breakdown doughnut
+        const kinds = (activityData.event_kinds || []).slice(0, 8);
+        const palette = [
+          "#6366f1",
+          "#22d3ee",
+          "#f59e0b",
+          "#f87171",
+          "#34d399",
+          "#a78bfa",
+          "#fb923c",
+          "#38bdf8",
+        ];
+        if (kinds.length) {
+          new Chart(document.getElementById("chartEventKinds"), {
+            type: "doughnut",
+            data: {
+              labels: kinds.map((k) => k.event_kind),
+              datasets: [
+                {
+                  data: kinds.map((k) => Number(k.cnt)),
+                  backgroundColor: palette.slice(0, kinds.length),
+                  borderWidth: 2,
+                  borderColor: "#0f172a",
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: {
+                  position: "bottom",
+                  labels: {
+                    color: "#94a3b8",
+                    boxWidth: 12,
+                    padding: 10,
+                    font: { size: 11 },
+                  },
+                },
+              },
+            },
+          });
+        }
 
-  // Time on page table
-  document.getElementById('timeOnPageBody').innerHTML = (exitsSummary || []).map(r =>
-    `<tr><td title="${r.page||''}">${r.page||'/'}</td><td>${r.visits}</td><td>${r.avg_time_sec ?? '—'}</td><td>${r.min_time_sec ?? '—'}</td><td>${r.max_time_sec ?? '—'}</td></tr>`
-  ).join('') || '<tr><td colspan="5" style="text-align:center;padding:24px;color:#475569">No exit data</td></tr>';
-}
+        // Time on page table
+        document.getElementById("timeOnPageBody").innerHTML =
+          (exitsSummary || [])
+            .map(
+              (r) =>
+                `<tr><td title="${r.page || ""}">${r.page || "/"}</td><td>${r.visits}</td><td>${r.avg_time_sec ?? "—"}</td><td>${r.min_time_sec ?? "—"}</td><td>${r.max_time_sec ?? "—"}</td></tr>`,
+            )
+            .join("") ||
+          '<tr><td colspan="5" style="text-align:center;padding:24px;color:#475569">No exit data</td></tr>';
+      }
 
-// ── Heatmap ────────────────────────────────────────────────────────────────────
-document.getElementById('loadHeatmap').addEventListener('click', async () => {
-  const url = document.getElementById('heatmapUrl').value;
-  const qs  = buildParams({ url });
-  try {
-    const r = await fetch('/api/heatmap' + qs);
-    if (!r.ok) return;
-    const { points, total } = await r.json();
-    renderHeatmap(points, total);
-  } catch {}
-});
+      // ── Heatmap ────────────────────────────────────────────────────────────────────
+      document
+        .getElementById("loadHeatmap")
+        .addEventListener("click", async () => {
+          const url = document.getElementById("heatmapUrl").value;
+          const qs = buildParams({ url });
+          try {
+            const r = await fetch("/api/heatmap" + qs);
+            if (!r.ok) return;
+            const { points, total } = await r.json();
+            renderHeatmap(points, total);
+          } catch {}
+        });
 
-function renderHeatmap(points, total) {
-  const wrap = document.getElementById('heatmapWrap');
-  const msg  = document.getElementById('heatmapMsg');
-  const canvas = document.getElementById('heatmapCanvas');
+      function renderHeatmap(points, total) {
+        const wrap = document.getElementById("heatmapWrap");
+        const msg = document.getElementById("heatmapMsg");
+        const canvas = document.getElementById("heatmapCanvas");
 
-  if (!points || !points.length) {
-    msg.style.display = '';
-    canvas.style.display = 'none';
-    msg.textContent = 'No click data for this selection.';
-    return;
-  }
-  msg.style.display = 'none';
-  canvas.style.display = '';
+        if (!points || !points.length) {
+          msg.style.display = "";
+          canvas.style.display = "none";
+          msg.textContent = "No click data for this selection.";
+          return;
+        }
+        msg.style.display = "none";
+        canvas.style.display = "";
 
-  const W = wrap.offsetWidth || 800;
-  const H = 320;
-  canvas.width  = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
+        const W = wrap.offsetWidth || 800;
+        const H = 320;
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, W, H);
 
-  const maxX = Math.max(...points.map(p => p.x), 1200);
-  const maxY = Math.max(...points.map(p => p.y), 800);
-  const maxCount = Math.max(...points.map(p => p.count), 1);
+        const maxX = Math.max(...points.map((p) => p.x), 1200);
+        const maxY = Math.max(...points.map((p) => p.y), 800);
+        const maxCount = Math.max(...points.map((p) => p.count), 1);
 
-  points.forEach(({ x, y, count }) => {
-    const px = (x / maxX) * W;
-    const py = (y / maxY) * H;
-    const r  = 20 + (count / maxCount) * 20;
-    const alpha = 0.2 + (count / maxCount) * 0.7;
-    const grd = ctx.createRadialGradient(px, py, 0, px, py, r);
+        points.forEach(({ x, y, count }) => {
+          const px = (x / maxX) * W;
+          const py = (y / maxY) * H;
+          const r = 20 + (count / maxCount) * 20;
+          const alpha = 0.2 + (count / maxCount) * 0.7;
+          const grd = ctx.createRadialGradient(px, py, 0, px, py, r);
 
-    const hue = 120 - Math.round((count / maxCount) * 120); // green→yellow→red
-    grd.addColorStop(0,   `hsla(${hue},100%,55%,${alpha})`);
-    grd.addColorStop(1,   `hsla(${hue},100%,55%,0)`);
-    ctx.beginPath();
-    ctx.arc(px, py, r, 0, Math.PI * 2);
-    ctx.fillStyle = grd;
-    ctx.fill();
-  });
-}
+          const hue = 120 - Math.round((count / maxCount) * 120); // green→yellow→red
+          grd.addColorStop(0, `hsla(${hue},100%,55%,${alpha})`);
+          grd.addColorStop(1, `hsla(${hue},100%,55%,0)`);
+          ctx.beginPath();
+          ctx.arc(px, py, r, 0, Math.PI * 2);
+          ctx.fillStyle = grd;
+          ctx.fill();
+        });
+      }
 
-// ── Session Journey ────────────────────────────────────────────────────────────
-document.getElementById('journeyBtn').addEventListener('click', async () => {
-  const sid = document.getElementById('journeySessionInput').value.trim();
-  if (!sid) return;
-  try {
-    const r = await fetch('/api/journey/' + encodeURIComponent(sid));
-    if (!r.ok) {
-      document.getElementById('journeyResult').innerHTML = '<span style="color:#f87171">Session not found.</span>';
-      return;
-    }
-    const steps = await r.json();
-    if (!steps.length) {
-      document.getElementById('journeyResult').innerHTML = '<span style="color:#64748b">No pages recorded for this session.</span>';
-      return;
-    }
-    const stepsHtml = steps.map((s, i) => {
-      const page = s.page || shortPage(s.url) || '/';
-      const time = s.time_sec != null ? s.time_sec + 's' : '—';
-      return (i > 0 ? '<span class="journey-arrow">→</span>' : '') +
-        `<div class="journey-step"><div class="step-page">${page}</div><div class="step-time">${time}</div></div>`;
-    }).join('');
-    document.getElementById('journeyResult').innerHTML = '<div class="journey-steps">' + stepsHtml + '</div>';
-  } catch {
-    document.getElementById('journeyResult').innerHTML = '<span style="color:#f87171">Error loading journey.</span>';
-  }
-});
+      // ── Session Journey ────────────────────────────────────────────────────────────
+      document
+        .getElementById("journeyBtn")
+        .addEventListener("click", async () => {
+          const sid = document
+            .getElementById("journeySessionInput")
+            .value.trim();
+          if (!sid) return;
+          try {
+            const r = await fetch("/api/journey/" + encodeURIComponent(sid));
+            if (!r.ok) {
+              document.getElementById("journeyResult").innerHTML =
+                '<span style="color:#f87171">Session not found.</span>';
+              return;
+            }
+            const steps = await r.json();
+            if (!steps.length) {
+              document.getElementById("journeyResult").innerHTML =
+                '<span style="color:#64748b">No pages recorded for this session.</span>';
+              return;
+            }
+            const stepsHtml = steps
+              .map((s, i) => {
+                const page = s.page || shortPage(s.url) || "/";
+                const time = s.time_sec != null ? s.time_sec + "s" : "—";
+                return (
+                  (i > 0 ? '<span class="journey-arrow">→</span>' : "") +
+                  `<div class="journey-step"><div class="step-page">${page}</div><div class="step-time">${time}</div></div>`
+                );
+              })
+              .join("");
+            document.getElementById("journeyResult").innerHTML =
+              '<div class="journey-steps">' + stepsHtml + "</div>";
+          } catch {
+            document.getElementById("journeyResult").innerHTML =
+              '<span style="color:#f87171">Error loading journey.</span>';
+          }
+        });
 
-// ── Errors ────────────────────────────────────────────────────────────────────
-function renderErrors() {
-  const byType = { 'js-error': 0, 'resource-error': 0, 'promise-rejection': 0 };
-  allErrors.forEach(e => { if (byType[e.error_type] !== undefined) byType[e.error_type]++; });
+      // ── Errors ────────────────────────────────────────────────────────────────────
+      function renderErrors() {
+        const byType = {
+          "js-error": 0,
+          "resource-error": 0,
+          "promise-rejection": 0,
+        };
+        allErrors.forEach((e) => {
+          if (byType[e.error_type] !== undefined) byType[e.error_type]++;
+        });
 
-  document.getElementById('statErrTotal').textContent   = allErrors.length;
-  document.getElementById('statErrJs').textContent      = byType['js-error'];
-  document.getElementById('statErrRes').textContent     = byType['resource-error'];
-  document.getElementById('statErrPromise').textContent = byType['promise-rejection'];
+        document.getElementById("statErrTotal").textContent = allErrors.length;
+        document.getElementById("statErrJs").textContent = byType["js-error"];
+        document.getElementById("statErrRes").textContent =
+          byType["resource-error"];
+        document.getElementById("statErrPromise").textContent =
+          byType["promise-rejection"];
 
-  // Errors over time (daily)
-  const errBuckets = {};
-  allErrors.forEach(e => {
-    const day = (e.ts || '').split('T')[0];
-    if (day) errBuckets[day] = (errBuckets[day] || 0) + 1;
-  });
-  const errLabels = Object.keys(errBuckets).sort();
-  const errLineDatasets = [{ label: 'Errors', data: errLabels.map(d => errBuckets[d]),
-    borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.12)', fill: true, tension: 0.3, pointRadius: 3 }];
+        // Errors over time (daily)
+        const errBuckets = {};
+        allErrors.forEach((e) => {
+          const day = (e.ts || "").split("T")[0];
+          if (day) errBuckets[day] = (errBuckets[day] || 0) + 1;
+        });
+        const errLabels = Object.keys(errBuckets).sort();
+        const errLineDatasets = [
+          {
+            label: "Errors",
+            data: errLabels.map((d) => errBuckets[d]),
+            borderColor: "#f87171",
+            backgroundColor: "rgba(248,113,113,0.12)",
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+          },
+        ];
 
-  if (compareMode && prevErrors.length) {
-    const prevBuckets = {};
-    prevErrors.forEach(e => {
-      const day = (e.ts || '').split('T')[0];
-      if (day) prevBuckets[day] = (prevBuckets[day] || 0) + 1;
-    });
-    errLineDatasets.push({ label: 'Prior period', data: errLabels.map(d => prevBuckets[d] || 0),
-      borderColor: '#334155', backgroundColor: 'transparent',
-      fill: false, tension: 0.3, borderDash: [5,3], pointRadius: 2 });
-  }
+        if (compareMode && prevErrors.length) {
+          const prevBuckets = {};
+          prevErrors.forEach((e) => {
+            const day = (e.ts || "").split("T")[0];
+            if (day) prevBuckets[day] = (prevBuckets[day] || 0) + 1;
+          });
+          errLineDatasets.push({
+            label: "Prior period",
+            data: errLabels.map((d) => prevBuckets[d] || 0),
+            borderColor: "#334155",
+            backgroundColor: "transparent",
+            fill: false,
+            tension: 0.3,
+            borderDash: [5, 3],
+            pointRadius: 2,
+          });
+        }
 
-  new Chart(document.getElementById('chartErrorsLine'), {
-    type: 'line', data: { labels: errLabels, datasets: errLineDatasets },
-    options: {
-      responsive: true,
-      plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12 } } },
-      scales: {
-        x: { ticks: { color: '#64748b', maxTicksLimit: 10 }, grid: { color: '#1e293b' } },
-        y: { ticks: { color: '#64748b' }, grid: { color: '#334155' }, beginAtZero: true },
-      },
-    },
-  });
+        new Chart(document.getElementById("chartErrorsLine"), {
+          type: "line",
+          data: { labels: errLabels, datasets: errLineDatasets },
+          options: {
+            responsive: true,
+            plugins: { legend: { labels: { color: "#94a3b8", boxWidth: 12 } } },
+            scales: {
+              x: {
+                ticks: { color: "#64748b", maxTicksLimit: 10 },
+                grid: { color: "#1e293b" },
+              },
+              y: {
+                ticks: { color: "#64748b" },
+                grid: { color: "#334155" },
+                beginAtZero: true,
+              },
+            },
+          },
+        });
 
-  renderErrorsDoughnut('chartErrorTypes', 'errTypeDoughnutWrap', allErrors);
+        renderErrorsDoughnut(
+          "chartErrorTypes",
+          "errTypeDoughnutWrap",
+          allErrors,
+        );
 
-  // Error log table
-  let errData = allErrors.slice(0, 200);
-  function renderErrTable(data) {
-    document.getElementById('errBody').innerHTML = data.map(e =>
-      `<tr>
+        // Error log table
+        let errData = allErrors.slice(0, 200);
+        function renderErrTable(data) {
+          document.getElementById("errBody").innerHTML =
+            data
+              .map(
+                (e) =>
+                  `<tr>
         <td>${fmtTime(e.ts)}</td>
-        <td><span class="badge badge-slow">${e.error_type || '—'}</span></td>
-        <td title="${e.message||''}">${(e.message||'').substring(0, 60)}</td>
+        <td><span class="badge badge-slow">${e.error_type || "—"}</span></td>
+        <td title="${e.message || ""}">${(e.message || "").substring(0, 60)}</td>
         <td>${shortPage(e.url)}</td>
-        <td class="mono">${e.line || '—'}</td>
-      </tr>`
-    ).join('') || '<tr><td colspan="5" style="text-align:center;padding:24px;color:#475569">No errors recorded.</td></tr>';
-  }
-  renderErrTable(errData);
-  document.getElementById('errSearch').oninput = e => {
-    const q = e.target.value.toLowerCase();
-    renderErrTable(allErrors.filter(r =>
-      (r.message||'').toLowerCase().includes(q) ||
-      (r.error_type||'').toLowerCase().includes(q) ||
-      (r.url||'').toLowerCase().includes(q)
-    ).slice(0, 200));
-  };
-}
+        <td class="mono">${e.line || "—"}</td>
+      </tr>`,
+              )
+              .join("") ||
+            '<tr><td colspan="5" style="text-align:center;padding:24px;color:#475569">No errors recorded.</td></tr>';
+        }
+        renderErrTable(errData);
+        document.getElementById("errSearch").oninput = (e) => {
+          const q = e.target.value.toLowerCase();
+          renderErrTable(
+            allErrors
+              .filter(
+                (r) =>
+                  (r.message || "").toLowerCase().includes(q) ||
+                  (r.error_type || "").toLowerCase().includes(q) ||
+                  (r.url || "").toLowerCase().includes(q),
+              )
+              .slice(0, 200),
+          );
+        };
+      }
 
-// ── Analyst Comments ──────────────────────────────────────────────────────────
-const canWrite = () => currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'analyst');
+      // ── Analyst Comments ──────────────────────────────────────────────────────────
+      const canWrite = () =>
+        currentUser &&
+        (currentUser.role === "super_admin" || currentUser.role === "analyst");
 
-async function loadComments(section) {
-  const panelId = 'comments' + section.charAt(0).toUpperCase() + section.slice(1);
-  const panel   = document.getElementById(panelId);
-  if (!panel) return;
+      async function loadComments(section) {
+        const panelId =
+          "comments" + section.charAt(0).toUpperCase() + section.slice(1);
+        const panel = document.getElementById(panelId);
+        if (!panel) return;
 
-  try {
-    const r = await fetch('/api/comments?section=' + section);
-    const comments = r.ok ? await r.json() : [];
-    renderComments(panel, section, comments);
-  } catch {}
-}
+        try {
+          const r = await fetch("/api/comments?section=" + section);
+          const comments = r.ok ? await r.json() : [];
+          renderComments(panel, section, comments);
+        } catch {}
+      }
 
-function renderComments(panel, section, comments) {
-  const writeHtml = canWrite() ? `
+      function renderComments(panel, section, comments) {
+        const writeHtml = canWrite()
+          ? `
     <div class="comment-form">
       <textarea placeholder="Add an analyst comment…" rows="3" id="ctxt-${section}"></textarea>
       <div class="comment-form-footer">
         <button class="btn-primary" style="font-size:12px;padding:5px 14px" onclick="submitComment('${section}')">Post Comment</button>
       </div>
-    </div>` : '';
+    </div>`
+          : "";
 
-  const commentsHtml = comments.map(c => `
+        const commentsHtml = comments
+          .map(
+            (c) => `
     <div class="comment-item" id="comment-${c.id}">
-      <div class="comment-meta">${c.author || 'analyst'} · ${fmtTime(c.updated_at || c.created_at)}${c.updated_at !== c.created_at ? ' (edited)' : ''}</div>
+      <div class="comment-meta">${c.author || "analyst"} · ${fmtTime(c.updated_at || c.created_at)}${c.updated_at !== c.created_at ? " (edited)" : ""}</div>
       <div class="comment-text">${escHtml(c.comment_text)}</div>
-      ${canWrite() ? `<div class="comment-actions">
+      ${
+        canWrite()
+          ? `<div class="comment-actions">
         <button onclick="deleteComment(${c.id}, '${section}')">Delete</button>
-      </div>` : ''}
-    </div>`).join('');
+      </div>`
+          : ""
+      }
+    </div>`,
+          )
+          .join("");
 
-  panel.innerHTML = `
+        panel.innerHTML = `
     <div class="comments-title">Analyst Comments</div>
     ${commentsHtml || '<p style="color:#475569;font-size:13px;margin-bottom:12px">No comments yet.</p>'}
     ${writeHtml}`;
-}
-
-async function submitComment(section) {
-  const ta = document.getElementById('ctxt-' + section);
-  const text = ta ? ta.value.trim() : '';
-  if (!text) return;
-  try {
-    const r = await fetch('/api/comments', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ section, comment_text: text }),
-    });
-    if (r.ok) { ta.value = ''; loadComments(section); }
-  } catch {}
-}
-
-async function deleteComment(id, section) {
-  if (!confirm('Delete this comment?')) return;
-  try {
-    await fetch('/api/comments/' + id, { method: 'DELETE' });
-    loadComments(section);
-  } catch {}
-}
-
-function escHtml(str) {
-  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-// ── Export ─────────────────────────────────────────────────────────────────────
-document.querySelectorAll('.export-btn').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const section = btn.dataset.section;
-    const panel   = document.getElementById('tab-' + section);
-    if (!panel) return;
-
-    btn.textContent = '⏳ Exporting…';
-    btn.disabled = true;
-
-    // Capture the section's inner HTML as the export content
-    const html_content = panel.innerHTML;
-    try {
-      const r = await fetch('/api/export', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          section,
-          title: section.charAt(0).toUpperCase() + section.slice(1),
-          html_content,
-        }),
-      });
-      if (r.ok) {
-        const { url } = await r.json();
-        window.open(url, '_blank');
-      } else {
-        alert('Export failed.');
       }
-    } catch {
-      alert('Export error.');
-    }
-    btn.textContent = '⬇ Export';
-    btn.disabled = false;
-  });
-});
-</script>
-</body>
+
+      async function submitComment(section) {
+        const ta = document.getElementById("ctxt-" + section);
+        const text = ta ? ta.value.trim() : "";
+        if (!text) return;
+        try {
+          const r = await fetch("/api/comments", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ section, comment_text: text }),
+          });
+          if (r.ok) {
+            ta.value = "";
+            loadComments(section);
+          }
+        } catch {}
+      }
+
+      async function deleteComment(id, section) {
+        if (!confirm("Delete this comment?")) return;
+        try {
+          await fetch("/api/comments/" + id, { method: "DELETE" });
+          loadComments(section);
+        } catch {}
+      }
+
+      function escHtml(str) {
+        return (str || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      // ── Export + Save Report ────────────────────────────────────────────────────────
+      document.querySelectorAll(".export-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const section = btn.dataset.section;
+          const panel = document.getElementById("tab-" + section);
+          if (!panel) return;
+
+          const name = prompt("Report name (leave blank to cancel):");
+          if (!name || !name.trim()) return;
+
+          btn.textContent = "⏳ Generating PDF…";
+          btn.disabled = true;
+
+          try {
+            // Capture chart canvases
+            const chart_snapshots = [];
+            panel.querySelectorAll("canvas").forEach((canvas) => {
+              try {
+                const label =
+                  canvas.closest(".card")?.querySelector(".card-title")?.textContent?.trim() ||
+                  canvas.id || "Chart";
+                chart_snapshots.push({
+                  label,
+                  data: canvas.toDataURL("image/jpeg", 0.7),
+                  w: canvas.width,
+                  h: canvas.height,
+                });
+              } catch {}
+            });
+
+            // Build PDF
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+            const pageW = doc.internal.pageSize.getWidth();
+            const pageH = doc.internal.pageSize.getHeight();
+            const margin = 16;
+            const usableW = pageW - margin * 2;
+
+            // Header bar
+            doc.setFillColor(30, 41, 59);
+            doc.rect(0, 0, pageW, 22, "F");
+            doc.setFontSize(13); doc.setTextColor(99, 102, 241);
+            doc.text(section.toUpperCase() + " REPORT", margin, 14);
+            doc.setFontSize(9); doc.setTextColor(148, 163, 184);
+            doc.text(name.trim(), margin + 65, 14);
+            doc.text(new Date().toLocaleString(), pageW - margin, 14, { align: "right" });
+
+            let y = 30;
+
+            if (chart_snapshots.length === 0) {
+              doc.setFontSize(11); doc.setTextColor(100, 116, 139);
+              doc.text("No charts available for this section.", margin, y);
+            }
+
+            for (const snap of chart_snapshots) {
+              const imgH = snap.w > 0
+                ? Math.min((snap.h / snap.w) * usableW, pageH - margin - y - 12)
+                : 60;
+              if (y + imgH + 12 > pageH - margin) { doc.addPage(); y = margin; }
+              doc.setFontSize(9); doc.setTextColor(148, 163, 184);
+              doc.text(snap.label, margin, y);
+              y += 5;
+              doc.addImage(snap.data, "JPEG", margin, y, usableW, imgH);
+              y += imgH + 10;
+            }
+
+            // POST PDF to server to get permanent URL
+            const pdfBase64 = doc.output("datauristring").split(",")[1];
+            const r = await fetch("/api/export-pdf", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ pdf_base64: pdfBase64, section, title: name.trim(), chart_snapshots }),
+            });
+
+            if (r.ok) {
+              const { url } = await r.json();
+              alert("Report saved! Opening PDF…");
+              window.open(url, "_blank");
+            } else {
+              alert("PDF save failed.");
+            }
+          } catch (e) {
+            console.error(e);
+            alert("Error generating PDF: " + e.message);
+          }
+
+          btn.textContent = "⬇ Save & Export";
+          btn.disabled = false;
+        });
+      });
+    </script>
+  </body>
 </html>

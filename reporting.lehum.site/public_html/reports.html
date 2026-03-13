@@ -221,9 +221,20 @@
         <button class="btn-sm" onclick="closeDetail()">Close</button>
       </div>
     </div>
+    <!-- Chart snapshots -->
+    <div id="detailSnapshots" style="display:none;margin-top:20px"></div>
+
     <div class="comments-panel">
       <div class="comments-title">Analyst Comments</div>
       <div id="detailComments" style="color:#475569;font-size:13px">Loading…</div>
+      <!-- Add comment form (analysts/super_admin only) -->
+      <div id="detailCommentForm" style="display:none;margin-top:14px">
+        <textarea id="detailCommentText" placeholder="Add an analyst comment…"
+          style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:10px 12px;font-size:13px;resize:vertical;min-height:72px;outline:none"></textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:6px">
+          <button class="btn-primary" onclick="postDetailComment()" style="font-size:12px;padding:6px 16px">Post Comment</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -335,9 +346,14 @@ async function deleteReport(id) {
 }
 
 // ── Report detail modal ────────────────────────────────────────────────────────
+let detailReportId = null;
+let detailSection  = null;
+
 async function openDetail(id) {
   const rep = allReports.find(r => r.id === id);
   if (!rep) return;
+  detailReportId = rep.id;
+  detailSection  = rep.section;
 
   document.getElementById('detailSection').className = 'report-section ' + rep.section;
   document.getElementById('detailSection').textContent = rep.section;
@@ -345,29 +361,65 @@ async function openDetail(id) {
   document.getElementById('detailMeta').textContent =
     'Saved by ' + (rep.author || 'analyst') + ' on ' + fmtDate(rep.created_at);
 
-  const exportLink = document.getElementById('detailExportLink');
-  exportLink.style.display = 'none';
-
+  document.getElementById('detailExportLink').style.display = 'none';
   document.getElementById('reportDetail').style.display = 'block';
   document.body.style.overflow = 'hidden';
 
-  // Load comments for this report's section
+  // Show chart snapshots if saved
+  const snapshotsEl = document.getElementById('detailSnapshots');
+  const cfg = rep.config || {};
+  if (cfg.chart_snapshots && cfg.chart_snapshots.length) {
+    snapshotsEl.style.display = 'block';
+    snapshotsEl.innerHTML = `
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:10px">Chart Snapshots</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
+        ${cfg.chart_snapshots.map(s => `
+          <div style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px">
+            <div style="font-size:11px;color:#475569;margin-bottom:6px">${escHtml(s.label)}</div>
+            <img src="${s.data}" style="width:100%;border-radius:4px" alt="${escHtml(s.label)}">
+          </div>`).join('')}
+      </div>`;
+  } else {
+    snapshotsEl.style.display = 'none';
+  }
+
+  // Show comment form for analysts
+  const isAnalyst = currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'analyst');
+  document.getElementById('detailCommentForm').style.display = isAnalyst ? 'block' : 'none';
+  document.getElementById('detailCommentText').value = '';
+
+  await loadDetailComments(rep.id, rep.section);
+}
+
+async function loadDetailComments(reportId, section) {
   try {
-    const r = await fetch('/api/comments?section=' + rep.section + '&report_id=' + rep.id);
+    const r = await fetch('/api/comments?report_id=' + reportId);
     const comments = r.ok ? await r.json() : [];
-    if (!comments.length) {
-      document.getElementById('detailComments').innerHTML =
-        '<p style="color:#475569;font-size:13px">No analyst comments for this report.</p>';
-    } else {
-      document.getElementById('detailComments').innerHTML = comments.map(c => `
-        <div class="comment-item">
-          <div class="comment-meta">${c.author || 'analyst'} · ${fmtDate(c.created_at)}</div>
-          <div class="comment-text">${escHtml(c.comment_text)}</div>
-        </div>`).join('');
-    }
+    document.getElementById('detailComments').innerHTML = comments.length
+      ? comments.map(c => `
+          <div class="comment-item">
+            <div class="comment-meta">${escHtml(c.author || 'analyst')} · ${fmtDate(c.created_at)}</div>
+            <div class="comment-text">${escHtml(c.comment_text)}</div>
+          </div>`).join('')
+      : '<p style="color:#475569;font-size:13px;margin-bottom:8px">No analyst comments yet.</p>';
   } catch {
     document.getElementById('detailComments').textContent = 'Could not load comments.';
   }
+}
+
+async function postDetailComment() {
+  const text = document.getElementById('detailCommentText').value.trim();
+  if (!text) return;
+  try {
+    const r = await fetch('/api/comments', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ section: detailSection, report_id: detailReportId, comment_text: text }),
+    });
+    if (r.ok) {
+      document.getElementById('detailCommentText').value = '';
+      await loadDetailComments(detailReportId, detailSection);
+    }
+  } catch {}
 }
 
 function closeDetail() {

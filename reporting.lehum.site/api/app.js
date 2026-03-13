@@ -41,8 +41,8 @@ if (!fs.existsSync(EXPORTS_DIR)) fs.mkdirSync(EXPORTS_DIR, { recursive: true });
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 app.use(session({
   secret:            process.env.SESSION_SECRET || "cse135-reporting-secret",
   resave:            false,
@@ -330,7 +330,7 @@ app.get("/api/activity-summary", requireAuth, requireSection("behavior"), async 
 
     const [kinds, scrolls, clicks] = await Promise.all([
       pool.query(`SELECT event_kind, COUNT(*) AS cnt FROM activity_events ${w} GROUP BY event_kind ORDER BY cnt DESC`, params),
-      pool.query(`SELECT event_data->>'depth' AS depth, COUNT(*) AS cnt FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind = 'scroll-depth' GROUP BY depth ORDER BY depth::int`, params),
+      pool.query(`SELECT event_data->>'depth' AS depth, COUNT(*) AS cnt FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind = 'scroll-depth' GROUP BY event_data->>'depth' ORDER BY (event_data->>'depth')::int`, params),
       pool.query(`SELECT event_data->>'x' AS x, event_data->>'y' AS y, url FROM activity_events ${w ? w + " AND" : "WHERE"} event_kind = 'click-enriched' LIMIT 2000`, params),
     ]);
 
@@ -488,11 +488,12 @@ app.post("/api/users", requireAuth, requireRole("super_admin"), async (req, res)
 });
 
 app.put("/api/users/:id", requireAuth, requireRole("super_admin"), async (req, res) => {
-  const { username, password, role, sections_allowed } = req.body;
+  const { email, display_name, password, role, sections_allowed } = req.body;
   try {
     const sets = [];
     const vals = [];
-    if (username)         { vals.push(username);         sets.push(`username = $${vals.length}`); }
+    if (email)            { vals.push(email);            sets.push(`email = $${vals.length}`); }
+    if (display_name)     { vals.push(display_name);     sets.push(`display_name = $${vals.length}`); }
     if (role)             { vals.push(role);             sets.push(`role = $${vals.length}`); }
     if (sections_allowed) { vals.push(sections_allowed); sets.push(`sections_allowed = $${vals.length}`); }
     if (password) {
@@ -504,7 +505,7 @@ app.put("/api/users/:id", requireAuth, requireRole("super_admin"), async (req, r
     vals.push(req.params.id);
     const { rows } = await pool.query(
       `UPDATE app_users SET ${sets.join(", ")} WHERE id = $${vals.length}
-       RETURNING id, username, role, sections_allowed`,
+       RETURNING id, email, display_name, role, sections_allowed`,
       vals,
     );
     if (!rows.length) return res.status(404).json({ error: "User not found" });
@@ -528,7 +529,7 @@ app.get("/api/reports", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT r.id, r.name, r.section, r.config, r.created_at,
-              u.username AS author
+              COALESCE(u.display_name, u.email) AS author
        FROM saved_reports r
        LEFT JOIN app_users u ON u.id = r.created_by
        ORDER BY r.created_at DESC LIMIT 100`,
@@ -540,7 +541,7 @@ app.get("/api/reports", requireAuth, async (req, res) => {
 app.get("/api/reports/:id", requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      `SELECT r.*, u.username AS author FROM saved_reports r
+      `SELECT r.*, COALESCE(u.display_name, u.email) AS author FROM saved_reports r
        LEFT JOIN app_users u ON u.id = r.created_by WHERE r.id = $1`,
       [req.params.id],
     );
@@ -581,7 +582,7 @@ app.get("/api/comments", requireAuth, async (req, res) => {
     const w = where.length ? "WHERE " + where.join(" AND ") : "";
     const { rows } = await pool.query(
       `SELECT c.id, c.section, c.report_id, c.comment_text, c.created_at, c.updated_at,
-              u.username AS author
+              COALESCE(u.display_name, u.email) AS author
        FROM analyst_comments c
        LEFT JOIN app_users u ON u.id = c.author_id
        ${w} ORDER BY c.created_at ASC`,
@@ -635,7 +636,7 @@ app.post("/api/export", requireAuth, requireRole("super_admin", "analyst"), asyn
     const ts       = Date.now();
     const filename = `report-${section}-${ts}.html`;
     const filepath = path.join(EXPORTS_DIR, filename);
-    const author   = req.session.user.username;
+    const author   = req.session.user.display_name || req.session.user.email;
     const wrapped  = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -659,6 +660,31 @@ app.post("/api/export", requireAuth, requireRole("super_admin", "analyst"), asyn
     res.json({ url: `/exports/${filename}`, filename });
   } catch (err) {
     console.error("[POST /api/export]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── PDF export ───────────────────────────────────────────────────────────────
+
+app.post("/api/export-pdf", requireAuth, requireRole("super_admin", "analyst"), async (req, res) => {
+  const { pdf_base64, section, title, chart_snapshots = [] } = req.body;
+  if (!pdf_base64 || !section) return res.status(400).json({ error: "pdf_base64 and section required" });
+  try {
+    const ts       = Date.now();
+    const filename = `report-${section}-${ts}.pdf`;
+    const filepath = path.join(EXPORTS_DIR, filename);
+    fs.writeFileSync(filepath, Buffer.from(pdf_base64, "base64"));
+
+    // Also save to saved_reports DB
+    const { rows } = await pool.query(
+      `INSERT INTO saved_reports (name, section, config, created_by)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [title || section, section, JSON.stringify({ chart_snapshots, pdf_url: `/exports/${filename}` }), req.session.user.id],
+    );
+
+    res.json({ url: `/exports/${filename}`, filename, report_id: rows[0].id });
+  } catch (err) {
+    console.error("[POST /api/export-pdf]", err.message);
     res.status(500).json({ error: err.message });
   }
 });
