@@ -8,14 +8,14 @@
 
 ## Live URLs
 
-| Site | URL |
-|---|---|
-| Dashboard | https://reporting.lehum.site/dashboard |
-| Login | https://reporting.lehum.site/login |
-| Saved Reports | https://reporting.lehum.site/reports |
-| Admin Panel | https://reporting.lehum.site/admin |
+| Site          | URL                                       |
+| ------------- | ----------------------------------------- |
+| Dashboard     | https://reporting.lehum.site/dashboard    |
+| Login         | https://reporting.lehum.site/login        |
+| Saved Reports | https://reporting.lehum.site/reports      |
+| Admin Panel   | https://reporting.lehum.site/admin        |
 | Collector SDK | https://collector.lehum.site/collector.js |
-| Test Site | https://test.lehum.site |
+| Test Site     | https://test.lehum.site                   |
 
 ## Repository
 
@@ -23,16 +23,15 @@ https://github.com/kilehsu/CSE135Assignment/tree/main/reporting.lehum.site
 
 ---
 
-
 ## Authentication System
 
 Three-tier role-based access control backed by the `app_users` PostgreSQL table:
 
-| Role | Capabilities |
-|---|---|
-| `super_admin` | Full access to all dashboard sections + user management (`/admin`) |
-| `analyst` | Access to assigned sections (any combination of traffic, performance, behavior, errors); can write analyst comments and save reports |
-| `viewer` | Read-only access to saved reports only; redirected to `/reports` after login; dashboard link hidden from nav |
+| Role          | Capabilities                                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `super_admin` | Full access to all dashboard sections + user management (`/admin`)                                                                   |
+| `analyst`     | Access to assigned sections (any combination of traffic, performance, behavior, errors); can write analyst comments and save reports |
+| `viewer`      | Read-only access to saved reports only; redirected to `/reports` after login; dashboard link hidden from nav                         |
 
 Passwords are stored as bcrypt hashes (cost 12). Sessions are managed with `express-session`. The dashboard is gated server-side by `requireAuth` middleware. HTML is never served as a static file, preventing forceful browsing. Unauthorized access attempts redirect to a styled `/403` page. Non-super-admin users who try to access `/admin` are also redirected to `/403`. A custom `/404` page handles unknown routes.
 
@@ -45,6 +44,7 @@ All pages include `<noscript>` fallback messaging for users with JavaScript disa
 Four report sections accessible from the tabbed dashboard:
 
 ### Traffic
+
 - Pageviews over time (daily line chart)
 - Browser and device breakdowns (doughnut charts)
 - Top pages table with percentage of total and filter/search
@@ -52,6 +52,7 @@ Four report sections accessible from the tabbed dashboard:
 - Top page transition pairs table
 
 ### Performance
+
 - Core Web Vitals summary cards (LCP, CLS, INP with good/needs-improvement/poor ratings)
 - TTFB distribution histogram
 - Web Vitals ratings mix stacked bar chart
@@ -59,12 +60,14 @@ Four report sections accessible from the tabbed dashboard:
 - Full navigation timing table with search/filter
 
 ### Behavior
+
 - Scroll depth reach bar chart (25/50/75/100%)
 - Event type breakdown doughnut
 - Click heatmap — canvas visualization of click density, filterable by URL with density legend
 - Avg time on page per URL table
 
 ### Errors
+
 - Error stat cards by type (JS errors, resource errors, unhandled rejections)
 - Errors over time line chart
 - Error type doughnut chart
@@ -77,6 +80,7 @@ Four report sections accessible from the tabbed dashboard:
 ## Export System
 
 Each report section has a **Save & Export** button that:
+
 1. Prompts the user for a report name
 2. Captures all Chart.js canvases as JPEG snapshots via `canvas.toDataURL()`
 3. Builds a landscape A4 PDF using jsPDF with a styled header, report metadata, and chart images
@@ -103,23 +107,21 @@ Each report section has a **Save & Export** button that:
 
 - **PDF Export with Chart Snapshots** — the Save & Export button captures all Chart.js canvases via `canvas.toDataURL()`, assembles a landscape A4 PDF with jsPDF (styled header, metadata, chart images), uploads it to the server via `POST /api/export-pdf`, auto-saves it as a record in `saved_reports` with a persistent `/exports/` URL, and opens it in a new tab
 
-- **Collector Bot Detection & Sampling** — the SDK checks `navigator.webdriver`, headless UA strings, and missing pointer events to skip automated browsers (`detectBots: true`); also supports a `sampleRate` option (0–1) to record only a fraction of sessions, enforced once per session via `sessionStorage`
-
 - **Date Range Filtering Across All Endpoints** — every data API accepts `?from=ISO&to=ISO` query params; the dashboard date picker appends `T00:00:00Z` / `T23:59:59Z` to ensure full-day coverage; a Reset button snaps back to the default 30-day window
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js 18+ |
-| Collector API | Express 4, `cors`, `dotenv`, `pg` |
-| Reporting API | Express 4, `express-session`, `bcryptjs`, `cors`, `dotenv`, `pg` |
-| Database | PostgreSQL — single `analytics` DB |
-| Client SDK | Vanilla JS (ES6 IIFE), no build step |
-| Dashboard Frontend | Vanilla JS + Chart.js 4.4.4 (CDN) + jsPDF 2.5.1 (CDN) |
-| Proxy | Apache reverse proxy |
+| Layer              | Technology                                                       |
+| ------------------ | ---------------------------------------------------------------- |
+| Runtime            | Node.js 18+                                                      |
+| Collector API      | Express 4, `cors`, `dotenv`, `pg`                                |
+| Reporting API      | Express 4, `express-session`, `bcryptjs`, `cors`, `dotenv`, `pg` |
+| Database           | PostgreSQL — single `analytics` DB                               |
+| Client SDK         | Vanilla JS (ES6 IIFE), no build step                             |
+| Dashboard Frontend | Vanilla JS + Chart.js 4.4.4 (CDN) + jsPDF 2.5.1 (CDN)            |
+| Proxy              | Apache reverse proxy                                             |
 
 ---
 
